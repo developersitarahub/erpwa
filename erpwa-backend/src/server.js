@@ -56,7 +56,6 @@ app.use("/api/gallery", galleryRoutes);
 app.use("/webhook", whatsappWebhookRoutes);
 app.use("/test", testUploadRoute);
 
-
 /* ================= SERVER START ================= */
 const PORT = process.env.PORT || 5000;
 
@@ -64,21 +63,17 @@ async function startServer() {
   try {
     await prisma.$queryRaw`SELECT 1`;
     console.log("✅ Database connected successfully");
-
-    // 🔥 Create HTTP server
-    const server = http.createServer(app);
-
-    // 🔥 Initialize Socket.IO
-    initSocket(server);
-
-    server.listen(PORT, () => {
-      console.log(`🚀 Backend + WebSocket running on port ${PORT}`);
-    });
   } catch (error) {
     console.error("❌ Database connection failed");
     console.error(error);
-    process.exit(1);
   }
+
+  const server = http.createServer(app);
+  initSocket(server);
+
+  server.listen(PORT, "0.0.0.0", () => {
+    console.log(`🚀 Backend + WebSocket running on port ${PORT}`);
+  });
 }
 
 startServer();
