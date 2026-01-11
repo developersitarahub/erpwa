@@ -22,6 +22,7 @@ import {
   MessageSquareIcon,
 } from "lucide-react";
 import Image from "next/image";
+import { toast } from "react-toastify";
 
 /* =======================
    UI MODELS (UNCHANGED)
@@ -48,6 +49,10 @@ interface Message {
   sender: "customer" | "executive";
   timestamp: string;
   status?: "sent" | "delivered" | "read" | "failed" | "received";
+  template?: {
+    footer?: string;
+    buttons?: Array<{ text: string; type: string }>;
+  };
 }
 
 interface Conversation {
@@ -104,6 +109,22 @@ interface ApiMessage {
     mimeType: string;
     caption?: string;
   }>;
+  outboundPayload?: any;
+}
+
+interface Template {
+  id: string;
+  metaTemplateName: string;
+  displayName: string;
+  category: string;
+  status: string;
+  languages: {
+    language: string;
+    body: string;
+    headerType: string;
+    footerText?: string;
+    headerText?: string;
+  }[];
 }
 
 /* =======================
@@ -309,10 +330,53 @@ function ChatArea({
     type: "image" | "video" | "audio" | "document" | "template";
   } | null>(null);
 
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
+    null
+  );
+  const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  const [isSendingTemplate, setIsSendingTemplate] = useState(false);
+  const [templateSearch, setTemplateSearch] = useState("");
+
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const genericInputRef = useRef<HTMLInputElement | null>(null);
   const isSessionActive = conversation.sessionActive !== false;
   const sessionStarted = conversation.sessionStarted;
+
+  useEffect(() => {
+    if (mediaModal?.type === "template") {
+      api
+        .get("/vendor/templates")
+        .then((res) => {
+          const approved = res.data.filter((t: any) => t.status === "approved");
+          setTemplates(approved);
+        })
+        .catch((err) => console.error("Failed to load templates", err));
+    }
+  }, [mediaModal?.type]);
+
+  const handleSendTemplate = async () => {
+    if (!selectedTemplate || isSendingTemplate) return;
+
+    setIsSendingTemplate(true);
+    try {
+      await api.post("/vendor/whatsapp/template/send-template", {
+        templateId: selectedTemplate.id,
+        recipients: [conversation.phone],
+        bodyVariables: templateVariables.map(
+          (v) => v.trim() || "Valued Customer"
+        ),
+      });
+      setMediaModal(null);
+      setSelectedTemplate(null);
+      setTemplateVariables([]);
+    } catch (err) {
+      console.error("Failed to send template", err);
+      toast.error("Failed to send template");
+    } finally {
+      setIsSendingTemplate(false);
+    }
+  };
 
   const copyMessage = async (message: Message): Promise<boolean> => {
     try {
@@ -370,7 +434,7 @@ function ChatArea({
       setImagePreview(null);
     } catch (err) {
       console.error("Image send failed", err);
-      alert("Failed to send image");
+      toast.error("Failed to send image");
     } finally {
       setSendingPreview(false);
     }
@@ -732,181 +796,202 @@ function ChatArea({
                       }`}
                     >
                       <div
-                        className={`group relative
-                                  max-w-md
-                                  px-3 py-2
-                                  shadow-sm
-                                  ${
-                                    msg.sender === "executive"
-                                      ? "bg-[#DCF8C6] dark:bg-[#005C4B] text-black dark:text-[#E9EDEF] rounded-lg rounded-br-none"
-                                      : "bg-white dark:bg-[#202C33] text-foreground rounded-lg rounded-bl-none"
-                                  }
-                                `}
+                        className={`group relative max-w-[85%] md:max-w-md shadow-sm overflow-hidden flex flex-col
+                                    ${
+                                      msg.sender === "executive"
+                                        ? "bg-[#DCF8C6] dark:bg-[#005C4B] text-black dark:text-[#E9EDEF] rounded-lg rounded-br-none self-end"
+                                        : "bg-white dark:bg-[#202C33] text-foreground rounded-lg rounded-bl-none self-start"
+                                    }
+                                  `}
                       >
-                        {(() => {
-                          const reply = getReplyPreview(
-                            msg.replyTo ?? repliedMessage
-                          );
-                          if (!reply) return null;
-
-                          return (
-                            <div className="mb-1 flex gap-2 px-2 py-1.5 border-l-4 border-[#25D366] bg-[rgba(0,0,0,0.04)] dark:bg-[rgba(255,255,255,0.08)] rounded">
-                              {reply.thumb && (
-                                <div className="relative w-10 h-10 flex-shrink-0">
+                        {/* 🖼 MEDIA (IMAGE/VIDEO) */}
+                        {msg.mediaUrl &&
+                          (msg.mimeType?.startsWith("image/") ||
+                            msg.mimeType?.startsWith("video/")) && (
+                            <div className="w-full overflow-hidden">
+                              {msg.mimeType.startsWith("image/") ? (
+                                <div
+                                  className="relative w-full aspect-[4/3] cursor-pointer"
+                                  onClick={() =>
+                                    window.open(msg.mediaUrl, "_blank")
+                                  }
+                                >
                                   <Image
-                                    src={reply.thumb}
-                                    alt=""
+                                    src={msg.mediaUrl}
+                                    alt="Message media"
                                     fill
-                                    sizes="40px"
-                                    className="rounded object-cover"
+                                    sizes="(max-width: 768px) 85vw, 450px"
+                                    className="object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-full bg-black aspect-video flex items-center">
+                                  <video
+                                    src={msg.mediaUrl}
+                                    controls
+                                    className="w-full h-auto"
                                   />
                                 </div>
                               )}
-
-                              <div className="min-w-0">
-                                <div className="text-xs font-medium text-[#25D366] leading-tight">
-                                  {reply.title}
-                                </div>
-                                <div className="text-xs text-muted-foreground truncate leading-tight">
-                                  {reply.subtitle}
-                                </div>
-                              </div>
                             </div>
-                          );
-                        })()}
+                          )}
 
-                        {/* 🖼 IMAGE */}
-                        {/* 🖼 IMAGE (WhatsApp style) */}
-                        {msg.mediaUrl && msg.mimeType?.startsWith("image/") && (
-                          <div className="mb-1">
-                            <div
-                              className="relative w-[320px] max-w-full aspect-[4/3] rounded-lg overflow-hidden cursor-pointer"
-                              onClick={() =>
-                                window.open(msg.mediaUrl, "_blank")
-                              }
-                            >
-                              <Image
-                                src={msg.mediaUrl}
-                                alt="Image"
-                                fill
-                                sizes="(max-width: 768px) 90vw, 320px"
-                                className="object-cover"
-                              />
-                            </div>
-
-                            {msg.caption && (
-                              <p className="mt-1 text-sm text-foreground">
-                                {msg.caption}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* 🎥 VIDEO (WhatsApp style) */}
-                        {msg.mediaUrl && msg.mimeType?.startsWith("video/") && (
-                          <div className="mb-1">
-                            <div className="w-[320px] max-w-full rounded-lg overflow-hidden bg-black">
-                              <video
-                                src={msg.mediaUrl}
-                                controls
-                                className="w-full h-auto"
-                              />
-                            </div>
-
-                            {msg.caption && (
-                              <p className="mt-1 text-sm text-foreground">
-                                {msg.caption}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* 🎵 AUDIO (WhatsApp style) */}
-                        {msg.mediaUrl && msg.mimeType?.startsWith("audio/") && (
-                          <div className="mb-1 w-[260px] max-w-full">
-                            <audio
-                              src={msg.mediaUrl}
-                              controls
-                              className="w-full h-10"
-                            />
-
-                            {msg.caption && (
-                              <p className="mt-1 text-sm text-foreground">
-                                {msg.caption}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* 📄 DOCUMENT (WhatsApp style) */}
+                        {/* 📄 DOCUMENT */}
                         {msg.mediaUrl &&
                           msg.mimeType &&
                           !msg.mimeType.startsWith("image/") &&
                           !msg.mimeType.startsWith("video/") &&
                           !msg.mimeType.startsWith("audio/") && (
-                            <a
-                              href={msg.mediaUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="w-[260px] max-w-full flex items-center gap-3 p-3 rounded-lg border bg-muted hover:bg-muted/70"
-                            >
-                              <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-semibold">
-                                📄
-                              </div>
-
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-foreground truncate">
-                                  {msg.mediaUrl.split("/").pop()}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  Document
-                                </p>
-                              </div>
-                            </a>
+                            <div className="p-2">
+                              <a
+                                href={msg.mediaUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors"
+                              >
+                                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">
+                                  DOC
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-foreground truncate">
+                                    {msg.mediaUrl.split("/").pop()}
+                                  </p>
+                                  <p className="text-[10px] text-muted-foreground uppercase uppercase">
+                                    Document
+                                  </p>
+                                </div>
+                              </a>
+                            </div>
                           )}
 
-                        {/* 📝 TEXT MESSAGE */}
-                        {msg.text && (
-                          <p className="text-sm leading-[1.35] break-words whitespace-pre-wrap overflow-hidden">
-                            {msg.text}
-                          </p>
-                        )}
+                        {/* 📝 CONTENT AREA */}
+                        <div className="px-3 py-2 flex flex-col">
+                          {/* REPLIED MESSAGE PREVIEW (Internal) */}
+                          {(() => {
+                            const reply = getReplyPreview(
+                              msg.replyTo ?? repliedMessage
+                            );
+                            if (!reply) return null;
+                            return (
+                              <div className="mb-2 flex gap-2 px-2 py-1.5 border-l-4 border-[#25D366] bg-black/5 dark:bg-white/5 rounded text-[11px]">
+                                {reply.thumb && (
+                                  <div className="relative w-8 h-8 flex-shrink-0">
+                                    <Image
+                                      src={reply.thumb}
+                                      alt=""
+                                      fill
+                                      sizes="32px"
+                                      className="rounded object-cover"
+                                    />
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-[#25D366] truncate">
+                                    {reply.title}
+                                  </div>
+                                  <div className="text-muted-foreground truncate">
+                                    {reply.subtitle}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })()}
 
-                        <div className="flex items-center gap-1 mt-1 justify-end">
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(msg.timestamp).toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </span>
+                          {/* AUDIO */}
+                          {msg.mediaUrl &&
+                            msg.mimeType?.startsWith("audio/") && (
+                              <div className="mb-2">
+                                <audio
+                                  src={msg.mediaUrl}
+                                  controls
+                                  className="w-full h-8"
+                                />
+                              </div>
+                            )}
 
-                          {msg.sender === "executive" && (
-                            <span
-                              className={
-                                msg.status === "read"
-                                  ? "text-blue-500"
-                                  : "text-muted-foreground"
-                              }
-                            >
-                              {getMessageStatusIcon(msg.status)}
-                            </span>
+                          {/* BODY TEXT */}
+                          {msg.text && (
+                            <p className="text-[14.2px] leading-[1.35] break-words whitespace-pre-wrap text-[#111b21] dark:text-[#e9edef]">
+                              {msg.text}
+                            </p>
                           )}
+
+                          {/* FOOTER & TIMESTAMP ROW */}
+                          <div className="flex items-end justify-between gap-4 mt-1.5">
+                            {msg.template?.footer ? (
+                              <p className="text-[12px] text-[#667781] dark:text-[#8696a0] leading-none pb-0.5">
+                                {msg.template.footer}
+                              </p>
+                            ) : (
+                              <div />
+                            )}
+
+                            <div className="flex items-center gap-1 self-end pb-0.5">
+                              <span className="text-[11px] text-[#667781] dark:text-[#8696a0]">
+                                {new Date(msg.timestamp)
+                                  .toLocaleTimeString([], {
+                                    hour: "numeric",
+                                    minute: "2-digit",
+                                    hour12: true,
+                                  })
+                                  .toLowerCase()}
+                              </span>
+                              {msg.sender === "executive" && (
+                                <span
+                                  className={
+                                    msg.status === "read"
+                                      ? "text-[#53bdeb]"
+                                      : "text-[#8696a0]"
+                                  }
+                                >
+                                  {getMessageStatusIcon(msg.status)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
 
-                        <div className="absolute -top-2 right-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {/* BUTTONS - Authentic WhatsApp Style */}
+                        {msg.template?.buttons &&
+                          msg.template.buttons.length > 0 && (
+                            <div className="border-t border-[#0000000d] dark:border-[#ffffff12] divide-y divide-[#0000000d] dark:divide-[#ffffff12]">
+                              {msg.template.buttons.map((btn, i) => (
+                                <div
+                                  key={i}
+                                  className="py-2.5 text-center text-[14px] font-medium text-[#00a884] hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer transition-colors active:bg-black/10"
+                                  onClick={() => {
+                                    if (
+                                      btn.type === "URL" &&
+                                      (btn as any).value
+                                    ) {
+                                      window.open((btn as any).value, "_blank");
+                                    } else {
+                                      setReplyTo(msg);
+                                      setInputValue(btn.text);
+                                      setTimeout(
+                                        () => inputRef.current?.focus(),
+                                        50
+                                      );
+                                    }
+                                  }}
+                                >
+                                  {btn.text}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                        {/* REACTION / MENU BUTTON (Floating) */}
+                        <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             onClick={(e) => {
                               const rect =
                                 e.currentTarget.getBoundingClientRect();
-
-                              setActionMenu({
-                                message: msg,
-                                rect,
-                              });
+                              setActionMenu({ message: msg, rect });
                             }}
-                            className="p-1.5 rounded-full bg-card border shadow hover:bg-muted"
+                            className="p-1 rounded-full bg-white/80 dark:bg-black/50 shadow-sm hover:bg-white dark:hover:bg-black transition-colors"
                           >
-                            <MoreVertical className="w-4 h-4 text-muted-foreground" />
+                            <MoreVertical className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -1281,9 +1366,124 @@ function ChatArea({
 
               {/* TEMPLATE */}
               {mediaModal.type === "template" && (
-                <p className="text-sm text-muted-foreground mt-4">
-                  Choose a WhatsApp template
-                </p>
+                <div className="mt-4 flex flex-col h-[400px]">
+                  {!selectedTemplate ? (
+                    <>
+                      <div className="relative mb-4">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <input
+                          type="text"
+                          placeholder="Search templates..."
+                          value={templateSearch}
+                          onChange={(e) => setTemplateSearch(e.target.value)}
+                          className="w-full bg-muted/50 pl-10 pr-4 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                        {templates
+                          .filter((t) =>
+                            t.displayName
+                              .toLowerCase()
+                              .includes(templateSearch.toLowerCase())
+                          )
+                          .map((t) => (
+                            <button
+                              key={t.id}
+                              onClick={() => {
+                                setSelectedTemplate(t);
+                                const body = t.languages[0]?.body || "";
+                                const match = body.match(/{{\d+}}/g);
+                                const count = match ? new Set(match).size : 0;
+                                setTemplateVariables(new Array(count).fill(""));
+                              }}
+                              className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-colors"
+                            >
+                              <p className="font-medium text-sm">
+                                {t.displayName}
+                              </p>
+                              <p className="text-xs text-muted-foreground line-clamp-1 mt-1">
+                                {t.languages[0]?.body}
+                              </p>
+                            </button>
+                          ))}
+                        {templates.length === 0 && (
+                          <div className="text-center py-8">
+                            <p className="text-sm text-muted-foreground">
+                              No approved templates found.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col h-full">
+                      <div className="flex items-center gap-2 mb-4">
+                        <button
+                          onClick={() => setSelectedTemplate(null)}
+                          className="p-1 hover:bg-muted rounded-full"
+                        >
+                          <ArrowLeft className="w-4 h-4" />
+                        </button>
+                        <p className="font-medium">
+                          {selectedTemplate.displayName}
+                        </p>
+                      </div>
+
+                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+                        <div className="p-3 bg-muted rounded-lg border border-border">
+                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
+                            Preview
+                          </p>
+                          <p className="text-sm whitespace-pre-wrap">
+                            {selectedTemplate.languages[0]?.body}
+                          </p>
+                        </div>
+
+                        {templateVariables.length > 0 && (
+                          <div className="space-y-3">
+                            <p className="text-xs font-semibold text-muted-foreground uppercase">
+                              Variables
+                            </p>
+                            {templateVariables.map((val, idx) => (
+                              <div key={idx} className="space-y-1">
+                                <label className="text-[10px] text-muted-foreground font-medium">
+                                  Variable {"{{" + (idx + 1) + "}}"}
+                                </label>
+                                <input
+                                  type="text"
+                                  value={val}
+                                  onChange={(e) => {
+                                    const next = [...templateVariables];
+                                    next[idx] = e.target.value;
+                                    setTemplateVariables(next);
+                                  }}
+                                  placeholder={`Enter value for {{${idx + 1}}}`}
+                                  className="w-full bg-muted/50 px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-primary"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4 pt-4 border-t border-border flex gap-3">
+                        <button
+                          onClick={() => setSelectedTemplate(null)}
+                          className="flex-1 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted"
+                        >
+                          Back
+                        </button>
+                        <button
+                          onClick={handleSendTemplate}
+                          disabled={isSendingTemplate}
+                          className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                        >
+                          {isSendingTemplate ? "Sending..." : "Send Template"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
 
               {/* Hidden file input */}
@@ -1321,7 +1521,7 @@ function ChatArea({
                           err instanceof Error
                             ? err.message
                             : "An error occurred";
-                        alert(message);
+                        toast.error(message);
                       }
                     }}
                   />
@@ -1335,18 +1535,8 @@ function ChatArea({
                 </>
               )}
 
-              {/* Template placeholder */}
-              {mediaModal.type === "template" && (
-                <button
-                  onClick={() => {
-                    alert("Template picker coming next");
-                    setMediaModal(null);
-                  }}
-                  className="w-full bg-primary text-white py-2 rounded-lg"
-                >
-                  Open Template Picker
-                </button>
-              )}
+              {/* Template picker is now integrated above */}
+              {mediaModal.type === "template" && null}
             </motion.div>
           </>
         )}
@@ -1651,10 +1841,8 @@ export default function InboxPage() {
             whatsappMessageId: m.whatsappMessageId,
             replyToMessageId: m.replyToMessageId,
 
-            // TEXT
-            text: media ? undefined : m.content,
-
-            // MEDIA
+            // TEXT & MEDIA
+            text: m.content,
             mediaUrl: media?.mediaUrl,
             mimeType: media?.mimeType,
             caption: media?.caption,
@@ -1662,6 +1850,16 @@ export default function InboxPage() {
             sender: m.direction === "outbound" ? "executive" : "customer",
             timestamp: m.createdAt,
             status: m.status ?? "delivered",
+
+            // TEMPLATE DATA (Look in outboundPayload.template first, then fallback)
+            template:
+              m.outboundPayload?.template ||
+              (m.outboundPayload?.name
+                ? {
+                    footer: m.outboundPayload.footer,
+                    buttons: m.outboundPayload.buttons,
+                  }
+                : undefined),
           };
         }
       );

@@ -497,7 +497,10 @@ router.post(
       });
 
       const errorMessage = metaData?.error?.message || metaData?.error?.user_msg || "Unknown Meta API Error";
-      return res.status(400).json({ message: errorMessage, details: metaData });
+      return res.status(400).json({
+        message: errorMessage,
+        details: metaData.error || metaData
+      });
     }
 
     // Update template status and save Meta ID
