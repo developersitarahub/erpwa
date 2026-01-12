@@ -6,11 +6,16 @@ export function requireRoles(allowedRoles = []) {
     }
 
     // Role check
+    console.log(`🔐 Role Check - User Role: "${req.user.role}" | Allowed Roles:`, allowedRoles);
+
     if (!allowedRoles.includes(req.user.role)) {
+      console.log(`❌ Permission Denied - Role "${req.user.role}" not in allowed roles:`, allowedRoles);
       return res.status(403).json({
         message: "You do not have permission to perform this action",
       });
     }
+
+    console.log(`✅ Permission Granted - Role "${req.user.role}" is allowed`);
 
     // Vendor context check (for vendor-scoped actions)
     if (!req.user.vendorId) {

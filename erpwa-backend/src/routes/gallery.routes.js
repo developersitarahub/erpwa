@@ -54,6 +54,11 @@ router.delete("/bulk", GalleryController.bulkDelete);
 router.get("/:id", GalleryController.getById);
 router.put("/:id", GalleryController.update);
 router.delete("/:id", GalleryController.delete);
+router.post(
+  "/send-bulk",
+  authenticate,
+  GalleryController.sendBulkCampaign
+);
 
 export default router;
 
