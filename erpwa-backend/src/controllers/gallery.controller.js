@@ -1,4 +1,5 @@
 import GalleryService from "../services/gallery.service.js";
+import CampaignService from "../services/campaign.service.js";
 
 class GalleryController {
   /**
@@ -59,10 +60,7 @@ class GalleryController {
    */
   static async create(req, res) {
     try {
-      const result = await GalleryService.create(
-        req.user.vendorId,
-        req.body
-      );
+      const result = await GalleryService.create(req.user.vendorId, req.body);
       res.json(result);
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -81,10 +79,7 @@ class GalleryController {
         return res.status(400).json({ error: "Images array is required" });
       }
 
-      const result = await GalleryService.bulkCreate(
-        req.user.vendorId,
-        images
-      );
+      const result = await GalleryService.bulkCreate(req.user.vendorId, images);
       res.json(result);
     } catch (err) {
       res.status(400).json({ error: err.message });
@@ -168,7 +163,7 @@ class GalleryController {
       // Upload files to S3
       const { uploadMultipleToS3 } = await import("../utils/s3.util.js");
 
-      const filesToUpload = req.files.map(file => ({
+      const filesToUpload = req.files.map((file) => ({
         buffer: file.buffer,
         originalName: file.originalname,
         mimeType: file.mimetype,
@@ -185,7 +180,9 @@ class GalleryController {
         subcategory_id: subcategory_id || undefined,
       }));
 
-      console.log(`✅ Successfully uploaded ${uploadResults.length} images to S3`);
+      console.log(
+        `✅ Successfully uploaded ${uploadResults.length} images to S3`
+      );
 
       // Use bulk create to save images
       const dbResult = await GalleryService.bulkCreate(
@@ -202,8 +199,31 @@ class GalleryController {
       res.status(400).json({ error: err.message || "Failed to upload images" });
     }
   }
+
+  static async sendBulkCampaign(req, res) {
+    try {
+      const vendorId = req.user.vendorId;
+
+      const { categoryId, subCategoryId, captionMode, conversationIds, name } =
+        req.body;
+
+      const result = await CampaignService.createImageCampaign(vendorId, {
+        name: name || `Gallery Campaign – ${new Date().toLocaleDateString()}`,
+        categoryId,
+        subCategoryId,
+        captionMode,
+        conversationIds,
+      });
+
+      res.json({
+        success: true,
+        message: "Campaign created and started",
+        campaignId: result.campaignId,
+      });
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  }
 }
 
 export default GalleryController;
-
-

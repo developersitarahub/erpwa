@@ -54,7 +54,7 @@ router.get(
 router.post(
   "/",
   authenticate,
-  requireRoles(["vendor_owner"]),
+  requireRoles(["vendor_owner", "vendor_admin", "sales"]),
   upload.single("header.file"),
   asyncHandler(async (req, res) => {
     const {
@@ -207,7 +207,7 @@ router.get(
 router.put(
   "/:id",
   authenticate,
-  requireRoles(["vendor_owner", "vendor_admin"]),
+  requireRoles(["vendor_owner", "vendor_admin", "sales"]),
   upload.single("header.file"),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
@@ -306,7 +306,7 @@ router.put(
 router.post(
   "/:id/submit",
   authenticate,
-  requireRoles(["vendor_owner"]),
+  requireRoles(["vendor_owner", "vendor_admin", "sales"]),
   asyncHandler(async (req, res) => {
 
     // 🚨 HARD BLOCK ANY BODY OR MULTIPART - Removed strict check to avoid false positives with empty JSON objects
@@ -535,7 +535,7 @@ router.post(
 router.delete(
   "/:id",
   authenticate,
-  requireRoles(["vendor_owner", "vendor_admin"]),
+  requireRoles(["vendor_owner", "vendor_admin", "sales"]),
   asyncHandler(async (req, res) => {
     const { id } = req.params;
 
@@ -597,7 +597,7 @@ router.delete(
 router.post(
   "/:id/sync-status",
   authenticate,
-  requireRoles(["vendor_owner", "vendor_admin"]),
+  requireRoles(["vendor_owner", "vendor_admin", "sales"]),
   asyncHandler(async (req, res) => {
     const template = await prisma.template.findUnique({
       where: { id: req.params.id },

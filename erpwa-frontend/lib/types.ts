@@ -63,3 +63,12 @@ export interface GalleryImage {
     created_at?: string
     updated_at?: string
 }
+
+export interface Campaign {
+  id: string;
+  name: string;
+  type: "image" | "template";
+  status: "draft" | "active" | "completed" | "paused";
+  recipientCount: number;
+  createdAt: string;
+}

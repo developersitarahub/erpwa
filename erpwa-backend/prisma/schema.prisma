@@ -266,19 +266,55 @@ model TemplateLanguage {
   @@unique([templateId, language])
 }
 
-model Campaign {
-  id          String    @id @default(uuid())
-  vendorId    String
-  templateId  String?
-  name        String?
-  filters     Json?
-  status      String    @default("draft")
-  scheduledAt DateTime?
-  createdAt   DateTime  @default(now())
-  template    Template? @relation(fields: [templateId], references: [id])
-  vendor      Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  messages    Message[]
+enum CampaignType {
+  TEMPLATE
+  IMAGE
 }
+
+enum ImageCaptionMode {
+  NONE
+  TITLE
+  DESCRIPTION
+}
+
+model Campaign {
+  id            String        @id @default(uuid())
+  vendorId      String
+
+  type          CampaignType
+
+  // ✅ ADD THIS
+  templateId    String?
+  template      Template?     @relation(fields: [templateId], references: [id])
+
+  categoryId    Int?
+  subCategoryId Int?
+  imageLimit    Int?          @default(100)
+  captionMode   ImageCaptionMode?
+
+  name          String?
+  filters       Json?
+
+  // ✅ Campaign execution tracking
+  totalMessages  Int          @default(0)
+  sentMessages   Int          @default(0)
+  failedMessages Int          @default(0)
+
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  status        String        @default("draft")
+  scheduledAt   DateTime?
+  createdAt     DateTime      @default(now())
+
+  vendor        Vendor        @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  messages      Message[]
+
+  @@index([vendorId])
+  @@index([type])
+}
+
+
 
 model Message {
   id                String            @id @default(uuid())

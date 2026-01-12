@@ -20,9 +20,15 @@ import {
   Clock,
   AlertCircle,
   MessageSquareIcon,
+  Globe,
+  Loader2,
+  Image as ImageIcon,
 } from "lucide-react";
 import Image from "next/image";
 import { toast } from "react-toastify";
+import { galleryAPI } from "@/lib/galleryApi";
+import { categoriesAPI } from "@/lib/categoriesApi";
+import type { Category, GalleryImage } from "@/lib/types";
 
 /* =======================
    UI MODELS (UNCHANGED)
@@ -109,7 +115,7 @@ interface ApiMessage {
     mimeType: string;
     caption?: string;
   }>;
-  outboundPayload?: any;
+  outboundPayload?: Record<string, unknown>;
 }
 
 interface Template {
@@ -125,6 +131,17 @@ interface Template {
     footerText?: string;
     headerText?: string;
   }[];
+  media?: {
+    id: string;
+    mediaType: string;
+    s3Url: string;
+    language: string;
+  }[];
+  buttons?: {
+    type: string;
+    text: string;
+    value?: string;
+  }[];
 }
 
 /* =======================
@@ -138,17 +155,19 @@ const getConversationTick = (
   // 🔒 HARD RULE: ticks ONLY for outbound
   if (direction !== "outbound") return null;
 
+  const iconClass = "w-4 h-4 flex-shrink-0";
+
   switch (status) {
     case "sent":
-      return <Check className="w-4 h-4 text-muted-foreground" />;
+      return <Check className={`${iconClass} text-muted-foreground`} />;
     case "delivered":
-      return <CheckCheck className="w-4 h-4 text-muted-foreground" />;
+      return <CheckCheck className={`${iconClass} text-muted-foreground`} />;
     case "read":
-      return <CheckCheck className="w-4 h-4 text-blue-500" />;
+      return <CheckCheck className={`${iconClass} text-blue-500`} />;
     case "failed":
-      return <AlertCircle className="w-4 h-4 text-destructive" />;
+      return <AlertCircle className={`${iconClass} text-destructive`} />;
     case "received":
-      return <CheckCheck className="w-4 h-4 text-muted-foreground" />;
+      return <CheckCheck className={`${iconClass} text-muted-foreground`} />;
     default:
       return null;
   }
@@ -214,13 +233,7 @@ function ConversationList({
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-1">
-                  <p
-                    className={`text-base truncate ${
-                      conv.hasUnread
-                        ? "font-semibold text-foreground"
-                        : "font-medium text-foreground"
-                    }`}
-                  >
+                  <p className="text-base font-semibold text-foreground truncate">
                     {conv.companyName}
                   </p>
 
@@ -239,7 +252,7 @@ function ConversationList({
                     <p
                       className={`text-sm truncate ${
                         conv.hasUnread
-                          ? "font-medium text-foreground"
+                          ? "text-foreground"
                           : "text-muted-foreground"
                       }`}
                     >
@@ -327,7 +340,7 @@ function ChatArea({
   const [imageMode, setImageMode] = useState<ImageMode>("single");
 
   const [mediaModal, setMediaModal] = useState<{
-    type: "image" | "video" | "audio" | "document" | "template";
+    type: "image" | "video" | "audio" | "document" | "template" | "gallery";
   } | null>(null);
 
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -337,6 +350,26 @@ function ChatArea({
   const [templateVariables, setTemplateVariables] = useState<string[]>([]);
   const [isSendingTemplate, setIsSendingTemplate] = useState(false);
   const [templateSearch, setTemplateSearch] = useState("");
+
+  // Gallery State
+  const [showGallery, setShowGallery] = useState(false); // Legacy, can be reused or ignored if we switch fully to modal type
+  const [galleryCategories, setGalleryCategories] = useState<Category[]>([]);
+  const [gallerySubcategories, setGallerySubcategories] = useState<Category[]>(
+    []
+  );
+  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
+  const [selectedGalleryCategory, setSelectedGalleryCategory] = useState<
+    number | null
+  >(null);
+  const [selectedGallerySubcategory, setSelectedGallerySubcategory] = useState<
+    number | null
+  >(null);
+  const [galleryLoading, setGalleryLoading] = useState(false);
+  const [selectedGalleryImages, setSelectedGalleryImages] = useState<
+    GalleryImage[]
+  >([]);
+  const [includeCaption, setIncludeCaption] = useState(false);
+  const [isPreparingMedia, setIsPreparingMedia] = useState(false);
 
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const genericInputRef = useRef<HTMLInputElement | null>(null);
@@ -348,12 +381,145 @@ function ChatArea({
       api
         .get("/vendor/templates")
         .then((res) => {
-          const approved = res.data.filter((t: any) => t.status === "approved");
+          const approved = res.data.filter((t: Template) => t.status === "approved");
           setTemplates(approved);
         })
         .catch((err) => console.error("Failed to load templates", err));
     }
+    // Load categories when opening gallery modal
+    if (mediaModal?.type === "gallery") {
+      categoriesAPI
+        .list()
+        .then((res) => {
+          setGalleryCategories(res.data || []);
+        })
+        .catch((err) => console.error("Failed to load categories", err));
+      loadGalleryImages();
+    }
   }, [mediaModal?.type]);
+
+  const handleGalleryCategoryClick = async (catId: number | null) => {
+    setSelectedGalleryCategory(catId);
+    setSelectedGallerySubcategory(null);
+    // Remove setGallerySubcategories([]) to prevent layout jump/closing
+
+    if (catId) {
+      // Run parallel to avoid waiting for subcategories before showing images
+      loadGalleryImages(catId);
+
+      try {
+        const res = await categoriesAPI.detail(catId);
+        setGallerySubcategories(res.data.subcategories || []);
+      } catch (err) {
+        console.error(err);
+      }
+    } else {
+      loadGalleryImages();
+    }
+  };
+
+  const loadGalleryImages = async (
+    categoryId?: number,
+    subCategoryId?: number
+  ) => {
+    setGalleryLoading(true);
+    try {
+      const res = await galleryAPI.list(
+        categoryId,
+        subCategoryId,
+        1,
+        50,
+        "createdAt",
+        "desc"
+      );
+      setGalleryImages(res.data?.images || []);
+    } catch (err) {
+      console.error("Failed to load gallery images", err);
+    } finally {
+      setGalleryLoading(false);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (galleryImages.length === 0) return;
+
+    // Check if all visible images are selected
+    const allVisibleSelected = galleryImages.every((img) =>
+      selectedGalleryImages.some((s) => s.id === img.id)
+    );
+
+    if (allVisibleSelected) {
+      // Deselect all visible
+      const visibleIds = new Set(galleryImages.map((i) => i.id));
+      setSelectedGalleryImages((prev) =>
+        prev.filter((i) => !visibleIds.has(i.id))
+      );
+    } else {
+      // Select all visible (merging with existing selection)
+      const newSelection = [...selectedGalleryImages];
+      galleryImages.forEach((img) => {
+        if (!newSelection.some((s) => s.id === img.id)) {
+          newSelection.push(img);
+        }
+      });
+      setSelectedGalleryImages(newSelection);
+    }
+  };
+
+  const handleSendGalleryImages = async () => {
+    if (!selectedGalleryImages.length) return;
+
+    setIsPreparingMedia(true);
+
+    try {
+      const processedFiles: File[] = [];
+
+      for (const img of selectedGalleryImages) {
+        const url = img.s3_url || img.url || img.image_url || "";
+        if (!url) continue;
+
+        // Fetch blob via proxy
+        const blobResp = await fetch(
+          `/api/proxy?url=${encodeURIComponent(url)}`
+        );
+        const blob = await blobResp.blob();
+
+        // Use title/desc as filename if possible, else generic
+        const filename =
+          (img.title || `gallery_${img.id}`)
+            .replace(/[^a-z0-9]/gi, "_")
+            .toLowerCase() + ".jpg";
+        const file = new File([blob], filename, { type: blob.type });
+        processedFiles.push(file);
+      }
+
+      if (processedFiles.length > 0) {
+        const urls = processedFiles.map((f) => URL.createObjectURL(f));
+
+        let initialCaption = "";
+        if (includeCaption && selectedGalleryImages.length > 0) {
+          initialCaption =
+            selectedGalleryImages[0].description ||
+            selectedGalleryImages[0].title ||
+            "";
+        }
+
+        setImagePreview({
+          files: processedFiles,
+          urls,
+          caption: initialCaption,
+        });
+
+        setMediaModal(null);
+        setSelectedGalleryImages([]);
+      }
+    } catch (err) {
+      console.error("Failed to prepare gallery images", err);
+      toast.error("Failed to load images for preview");
+    } finally {
+      setIsPreparingMedia(false);
+    }
+  };
 
   const handleSendTemplate = async () => {
     if (!selectedTemplate || isSendingTemplate) return;
@@ -370,6 +536,7 @@ function ChatArea({
       setMediaModal(null);
       setSelectedTemplate(null);
       setTemplateVariables([]);
+      toast.success("Template sent successfully!");
     } catch (err) {
       console.error("Failed to send template", err);
       toast.error("Failed to send template");
@@ -796,7 +963,12 @@ function ChatArea({
                       }`}
                     >
                       <div
-                        className={`group relative max-w-[85%] md:max-w-md shadow-sm overflow-hidden flex flex-col
+                        className={`group relative shadow-sm overflow-hidden flex flex-col
+                                    ${
+                                      msg.template
+                                        ? "w-[300px] sm:w-[330px]"
+                                        : "max-w-[85%] md:max-w-md"
+                                    }
                                     ${
                                       msg.sender === "executive"
                                         ? "bg-[#DCF8C6] dark:bg-[#005C4B] text-black dark:text-[#E9EDEF] rounded-lg rounded-br-none self-end"
@@ -962,9 +1134,9 @@ function ChatArea({
                                   onClick={() => {
                                     if (
                                       btn.type === "URL" &&
-                                      (btn as any).value
+                                      (btn as { type: string; text: string; value?: string }).value
                                     ) {
-                                      window.open((btn as any).value, "_blank");
+                                      window.open((btn as { type: string; text: string; value?: string }).value, "_blank");
                                     } else {
                                       setReplyTo(msg);
                                       setInputValue(btn.text);
@@ -1071,9 +1243,7 @@ function ChatArea({
             {!isSessionActive ? (
               <motion.button
                 className="bg-primary text-white px-4 py-2 rounded-lg"
-                onClick={() => {
-                  alert("Open template picker");
-                }}
+                onClick={() => setMediaModal({ type: "template" })}
               >
                 Send Template
               </motion.button>
@@ -1258,7 +1428,10 @@ function ChatArea({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => setMediaModal(null)}
+              onClick={() => {
+                setMediaModal(null);
+                setSelectedGalleryImages([]);
+              }}
             />
 
             {/* Center Modal */}
@@ -1271,272 +1444,737 @@ function ChatArea({
           fixed z-50
           top-1/2 left-1/2
           -translate-x-1/2 -translate-y-1/2
-          w-105 max-w-[90vw]
+          w-full max-w-lg
           bg-card
-          rounded-xl
+          rounded-2xl
           shadow-2xl
-          p-6
+          p-0
+          overflow-hidden
+          border border-border/50
+          backdrop-blur-xl
         "
             >
-              <h3 className="text-lg font-semibold mb-2">
-                {mediaModal.type === "template"
-                  ? "Send Template"
-                  : "Send Media"}
-              </h3>
+              <div className="px-6 py-4 border-b border-border flex items-center justify-between bg-muted/30">
+                <h3 className="text-lg font-semibold">
+                  {mediaModal.type === "template"
+                    ? "Select Template"
+                    : "Send Media"}
+                </h3>
+                <button
+                  onClick={() => {
+                    setMediaModal(null);
+                    setSelectedGalleryImages([]);
+                  }}
+                  className="p-2 hover:bg-muted rounded-full transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
 
-              {/* IMAGE */}
-              {mediaModal.type === "image" && (
-                <div className="mt-4 space-y-6">
-                  <div>
-                    <h3 className="text-lg font-semibold">Send Photos</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Choose how you want to send images
-                    </p>
-                  </div>
-
-                  {/* SEND MODE */}
-                  <div>
-                    <p className="text-xs text-muted-foreground mb-2">
-                      Send mode
-                    </p>
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => setImageMode("single")}
-                        className={`flex-1 py-2.5 rounded-lg ${
-                          imageMode === "single"
-                            ? "bg-primary text-white"
-                            : "bg-muted"
-                        }`}
-                      >
-                        Single
-                      </button>
-                      <button
-                        onClick={() => setImageMode("bulk")}
-                        className={`flex-1 py-2.5 rounded-lg ${
-                          imageMode === "bulk"
-                            ? "bg-primary text-white"
-                            : "bg-muted"
-                        }`}
-                      >
-                        Bulk
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* DEVICE */}
-                  <button
-                    onClick={() => imageInputRef.current?.click()}
-                    className="rounded-xl border p-5 hover:bg-muted text-left"
-                  >
-                    <div className="text-3xl mb-2">📁</div>
-                    <p className="font-medium text-sm">Device</p>
-                  </button>
-
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple={imageMode === "bulk"}
-                    className="hidden"
-                    onChange={handleImageSelect}
-                  />
-                </div>
-              )}
-
-              {/* VIDEO */}
-              {mediaModal.type === "video" && (
-                <p className="text-sm text-muted-foreground mt-4">
-                  Select videos
-                </p>
-              )}
-
-              {/* AUDIO */}
-              {mediaModal.type === "audio" && (
-                <p className="text-sm text-muted-foreground mt-4">
-                  Select audio files
-                </p>
-              )}
-
-              {/* DOCUMENT */}
-              {mediaModal.type === "document" && (
-                <p className="text-sm text-muted-foreground mt-4">
-                  Select documents
-                </p>
-              )}
-
-              {/* TEMPLATE */}
-              {mediaModal.type === "template" && (
-                <div className="mt-4 flex flex-col h-[400px]">
-                  {!selectedTemplate ? (
-                    <>
-                      <div className="relative mb-4">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <input
-                          type="text"
-                          placeholder="Search templates..."
-                          value={templateSearch}
-                          onChange={(e) => setTemplateSearch(e.target.value)}
-                          className="w-full bg-muted/50 pl-10 pr-4 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-primary"
-                        />
-                      </div>
-                      <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
-                        {templates
-                          .filter((t) =>
-                            t.displayName
-                              .toLowerCase()
-                              .includes(templateSearch.toLowerCase())
-                          )
-                          .map((t) => (
-                            <button
-                              key={t.id}
-                              onClick={() => {
-                                setSelectedTemplate(t);
-                                const body = t.languages[0]?.body || "";
-                                const match = body.match(/{{\d+}}/g);
-                                const count = match ? new Set(match).size : 0;
-                                setTemplateVariables(new Array(count).fill(""));
-                              }}
-                              className="w-full text-left p-3 rounded-lg border border-border hover:border-primary/50 hover:bg-primary/5 transition-colors"
-                            >
-                              <p className="font-medium text-sm">
-                                {t.displayName}
-                              </p>
-                              <p className="text-xs text-muted-foreground line-clamp-1 mt-1">
-                                {t.languages[0]?.body}
-                              </p>
-                            </button>
-                          ))}
-                        {templates.length === 0 && (
-                          <div className="text-center py-8">
-                            <p className="text-sm text-muted-foreground">
-                              No approved templates found.
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex flex-col h-full">
-                      <div className="flex items-center gap-2 mb-4">
-                        <button
-                          onClick={() => setSelectedTemplate(null)}
-                          className="p-1 hover:bg-muted rounded-full"
-                        >
-                          <ArrowLeft className="w-4 h-4" />
-                        </button>
-                        <p className="font-medium">
-                          {selectedTemplate.displayName}
+              <div className="p-6">
+                {/* IMAGE */}
+                {mediaModal.type === "image" && (
+                  <div className="mt-4 flex flex-col h-[500px]">
+                    <div className="flex-shrink-0 space-y-4 mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold">Send Photos</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Choose how you want to send images
                         </p>
                       </div>
 
-                      <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                        <div className="p-3 bg-muted rounded-lg border border-border">
-                          <p className="text-xs font-semibold text-muted-foreground uppercase mb-2">
-                            Preview
-                          </p>
-                          <p className="text-sm whitespace-pre-wrap">
-                            {selectedTemplate.languages[0]?.body}
-                          </p>
+                      {/* SEND MODE */}
+                      <div>
+                        <p className="text-xs text-muted-foreground mb-2">
+                          Send mode
+                        </p>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => {
+                              setImageMode("single");
+                              setSelectedGalleryImages([]);
+                            }}
+                            className={`flex-1 py-2.5 rounded-lg ${
+                              imageMode === "single"
+                                ? "bg-primary text-white"
+                                : "bg-muted"
+                            }`}
+                          >
+                            Single
+                          </button>
+                          <button
+                            onClick={() => {
+                              setImageMode("bulk");
+                              setSelectedGalleryImages([]);
+                            }}
+                            className={`flex-1 py-2.5 rounded-lg ${
+                              imageMode === "bulk"
+                                ? "bg-primary text-white"
+                                : "bg-muted"
+                            }`}
+                          >
+                            Bulk
+                          </button>
                         </div>
+                      </div>
+                    </div>
 
-                        {templateVariables.length > 0 && (
-                          <div className="space-y-3">
-                            <p className="text-xs font-semibold text-muted-foreground uppercase">
-                              Variables
-                            </p>
-                            {templateVariables.map((val, idx) => (
-                              <div key={idx} className="space-y-1">
-                                <label className="text-[10px] text-muted-foreground font-medium">
-                                  Variable {"{{" + (idx + 1) + "}}"}
-                                </label>
-                                <input
-                                  type="text"
-                                  value={val}
-                                  onChange={(e) => {
-                                    const next = [...templateVariables];
-                                    next[idx] = e.target.value;
-                                    setTemplateVariables(next);
-                                  }}
-                                  placeholder={`Enter value for {{${idx + 1}}}`}
-                                  className="w-full bg-muted/50 px-3 py-2 rounded-lg text-sm outline-none focus:ring-1 focus:ring-primary"
-                                />
-                              </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* DEVICE */}
+                      <button
+                        onClick={() => imageInputRef.current?.click()}
+                        className="rounded-xl border p-5 hover:bg-muted text-left flex flex-col items-center justify-center gap-2 aspect-square"
+                      >
+                        <div className="text-4xl">📁</div>
+                        <p className="font-medium text-sm">Device</p>
+                      </button>
+
+                      {/* GALLERY */}
+                      <button
+                        onClick={() => setMediaModal({ type: "gallery" })}
+                        className="rounded-xl border p-5 hover:bg-muted text-left flex flex-col items-center justify-center gap-2 aspect-square"
+                      >
+                        <div className="text-4xl">🖼️</div>
+                        <p className="font-medium text-sm">Gallery</p>
+                      </button>
+                    </div>
+
+                    {/* Hidden Input for Device Upload */}
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple={imageMode === "bulk"}
+                      className="hidden"
+                      onChange={handleImageSelect}
+                    />
+                  </div>
+                )}
+
+                {/* GALLERY MODAL CONTENT */}
+                {mediaModal.type === "gallery" && (
+                  <div className="flex flex-col h-[500px] mt-0">
+                    <div className="flex-shrink-0 mb-4 space-y-3">
+                      {/* Categories Row */}
+                      <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1">
+                        <button
+                          type="button"
+                          onClick={() => handleGalleryCategoryClick(null)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 border ${
+                            !selectedGalleryCategory
+                              ? "bg-primary text-white border-primary"
+                              : "bg-background border-border hover:bg-muted"
+                          }`}
+                        >
+                          All
+                        </button>
+                        {galleryCategories.map((c) => (
+                          <button
+                            type="button"
+                            key={c.id}
+                            onClick={() => handleGalleryCategoryClick(c.id)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex-shrink-0 border ${
+                              selectedGalleryCategory === c.id
+                                ? "bg-primary text-white border-primary"
+                                : "bg-background border-border hover:bg-muted"
+                            }`}
+                          >
+                            {c.name}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Subcategories Row - only if category selected & has subcats */}
+                      {selectedGalleryCategory &&
+                        gallerySubcategories.length > 0 && (
+                          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1 pt-1 border-t border-dashed border-border/50">
+                            <span className="text-[10px] text-muted-foreground mr-1 uppercase tracking-wider font-bold">
+                              Sub-Category:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedGallerySubcategory(null);
+                                loadGalleryImages(selectedGalleryCategory);
+                              }}
+                              className={`px-3 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                                !selectedGallerySubcategory
+                                  ? "bg-primary/20 text-primary"
+                                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+                              }`}
+                            >
+                              All
+                            </button>
+                            {gallerySubcategories.map((sc) => (
+                              <button
+                                type="button"
+                                key={sc.id}
+                                onClick={() => {
+                                  setSelectedGallerySubcategory(sc.id);
+                                  loadGalleryImages(
+                                    selectedGalleryCategory,
+                                    sc.id
+                                  );
+                                }}
+                                className={`px-3 py-1 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors flex-shrink-0 ${
+                                  selectedGallerySubcategory === sc.id
+                                    ? "bg-primary/20 text-primary"
+                                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                                }`}
+                              >
+                                {sc.name}
+                              </button>
                             ))}
                           </div>
                         )}
+                    </div>
+
+                    {/* IMAGES GRID */}
+                    <div className="flex-1 overflow-y-auto grid grid-cols-3 sm:grid-cols-4 gap-2 pr-1 custom-scrollbar content-start">
+                      {galleryLoading ? (
+                        <div className="col-span-full flex items-center justify-center h-40">
+                          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+                        </div>
+                      ) : galleryImages.length === 0 ? (
+                        <div className="col-span-full flex flex-col items-center justify-center h-40 text-muted-foreground">
+                          <ImageIcon className="w-8 h-8 opacity-20 mb-2" />
+                          <p className="text-sm">No images found</p>
+                        </div>
+                      ) : (
+                        galleryImages.map((img) => {
+                          const isSelected = !!selectedGalleryImages.find(
+                            (i) => i.id === img.id
+                          );
+                          return (
+                            <div
+                              key={img.id}
+                              className={`relative aspect-square cursor-pointer group rounded-lg overflow-hidden border-2 transition-all bg-muted/20 ${
+                                isSelected
+                                  ? "border-primary ring-2 ring-primary/20"
+                                  : "border-transparent"
+                              }`}
+                              onClick={() => {
+                                if (imageMode === "single") {
+                                  // Single Mode: replace selection
+                                  setSelectedGalleryImages([img]);
+                                } else {
+                                  // Bulk Mode: toggle selection
+                                  if (isSelected) {
+                                    setSelectedGalleryImages((prev) =>
+                                      prev.filter((i) => i.id !== img.id)
+                                    );
+                                  } else {
+                                    setSelectedGalleryImages((prev) => [
+                                      ...prev,
+                                      img,
+                                    ]);
+                                  }
+                                }
+                              }}
+                            >
+                              <Image
+                                src={
+                                  img.s3_url || img.url || img.image_url || ""
+                                }
+                                alt="Gallery"
+                                fill
+                                className="object-cover transition-transform duration-500 group-hover:scale-110"
+                                sizes="(max-width: 768px) 33vw, 200px"
+                              />
+                              <div
+                                className={`absolute inset-0 bg-black/40 flex items-center justify-center transition-opacity duration-200 ${
+                                  isSelected
+                                    ? "opacity-100"
+                                    : "opacity-0 group-hover:opacity-100"
+                                }`}
+                              >
+                                {isSelected && (
+                                  <Check className="w-6 h-6 text-white bg-primary rounded-full p-1 shadow-sm" />
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* SEND GALLERY BUTTON */}
+                    <div className="pt-4 mt-2 border-t border-border bg-card z-10">
+                      <div className="flex items-center justify-between mb-3 px-1">
+                        {imageMode === "bulk" ? (
+                          <button
+                            onClick={toggleSelectAll}
+                            className="text-xs font-semibold text-primary hover:text-primary/80 transition-colors"
+                          >
+                            {galleryImages.length > 0 &&
+                            galleryImages.every((img) =>
+                              selectedGalleryImages.some((s) => s.id === img.id)
+                            )
+                              ? "Deselect All"
+                              : "Select All"}
+                          </button>
+                        ) : (
+                          <div />
+                        )}
+
+                        <button
+                          onClick={() => setIncludeCaption(!includeCaption)}
+                          className="flex items-center gap-2 cursor-pointer group"
+                        >
+                          <div
+                            className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${
+                              includeCaption
+                                ? "bg-primary border-primary"
+                                : "border-muted-foreground group-hover:border-primary"
+                            }`}
+                          >
+                            {includeCaption && (
+                              <Check className="w-3 h-3 text-white" />
+                            )}
+                          </div>
+                          <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground transition-colors">
+                            Show Caption
+                          </span>
+                        </button>
                       </div>
 
-                      <div className="mt-4 pt-4 border-t border-border flex gap-3">
-                        <button
-                          onClick={() => setSelectedTemplate(null)}
-                          className="flex-1 py-2 rounded-lg border border-border text-sm font-medium hover:bg-muted"
-                        >
-                          Back
-                        </button>
-                        <button
-                          onClick={handleSendTemplate}
-                          disabled={isSendingTemplate}
-                          className="flex-1 py-2 rounded-lg bg-primary text-white text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-                        >
-                          {isSendingTemplate ? "Sending..." : "Send Template"}
-                        </button>
+                      <button
+                        onClick={handleSendGalleryImages}
+                        disabled={
+                          selectedGalleryImages.length === 0 || isPreparingMedia
+                        }
+                        className="w-full bg-primary text-white py-3 rounded-xl font-semibold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:shadow-none active:scale-[0.98]"
+                      >
+                        {isPreparingMedia ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            Preparing Preview...
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            Send{" "}
+                            {selectedGalleryImages.length > 0
+                              ? `(${selectedGalleryImages.length})`
+                              : ""}
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* VIDEO */}
+                {mediaModal.type === "video" && (
+                  <p className="text-sm text-muted-foreground mt-4">
+                    Select videos
+                  </p>
+                )}
+
+                {/* AUDIO */}
+                {mediaModal.type === "audio" && (
+                  <p className="text-sm text-muted-foreground mt-4">
+                    Select audio files
+                  </p>
+                )}
+
+                {/* DOCUMENT */}
+                {mediaModal.type === "document" && (
+                  <p className="text-sm text-muted-foreground mt-4">
+                    Select documents
+                  </p>
+                )}
+
+                {mediaModal.type === "template" && (
+                  <div className="mt-0 flex flex-col h-[500px]">
+                    {!selectedTemplate ? (
+                      <>
+                        <div className="relative mb-4">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                          <input
+                            type="text"
+                            placeholder="Search templates by name..."
+                            value={templateSearch}
+                            onChange={(e) => setTemplateSearch(e.target.value)}
+                            className="w-full bg-muted/50 pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 border border-border/50 transition-all"
+                          />
+                        </div>
+                        <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
+                          {templates
+                            .filter((t) =>
+                              t.displayName
+                                .toLowerCase()
+                                .includes(templateSearch.toLowerCase())
+                            )
+                            .map((t) => (
+                              <button
+                                key={t.id}
+                                onClick={() => {
+                                  setSelectedTemplate(t);
+                                  const body = t.languages[0]?.body || "";
+                                  const match = body.match(/{{\d+}}/g);
+                                  const count = match ? new Set(match).size : 0;
+                                  setTemplateVariables(
+                                    new Array(count).fill("")
+                                  );
+                                }}
+                                className="w-full text-left p-4 rounded-xl border border-border hover:border-primary/50 hover:bg-primary/5 transition-all group relative overflow-hidden"
+                              >
+                                <div className="flex justify-between items-start mb-1">
+                                  <p className="font-semibold text-sm group-hover:text-primary transition-colors">
+                                    {t.displayName}
+                                  </p>
+                                  <span
+                                    className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wider ${
+                                      t.category === "MARKETING"
+                                        ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30"
+                                        : t.category === "UTILITY"
+                                        ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30"
+                                        : "bg-muted text-muted-foreground"
+                                    }`}
+                                  >
+                                    {t.category}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
+                                  {t.languages[0]?.body}
+                                </p>
+                                <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <Send className="w-4 h-4 text-primary" />
+                                </div>
+                              </button>
+                            ))}
+                          {templates.length === 0 && (
+                            <div className="text-center py-12">
+                              <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-3">
+                                <MessageSquareIcon className="w-6 h-6 text-muted-foreground" />
+                              </div>
+                              <p className="text-sm font-medium text-foreground">
+                                No approved templates
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Check your Meta Business Suite
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex flex-col h-full">
+                        <div className="flex items-center gap-3 mb-6 bg-muted/30 p-3 rounded-xl">
+                          <button
+                            onClick={() => setSelectedTemplate(null)}
+                            className="p-1.5 hover:bg-muted rounded-full bg-background shadow-sm transition-transform active:scale-95"
+                          >
+                            <ArrowLeft className="w-4 h-4" />
+                          </button>
+                          <div>
+                            <p className="font-semibold text-sm">
+                              {selectedTemplate.displayName}
+                            </p>
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                              {selectedTemplate.category}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto space-y-6 pr-2 custom-scrollbar pb-4">
+                          {/* Real-time Preview Bubble */}
+                          <div className="space-y-4">
+                            <div className="flex justify-between items-center px-1">
+                              <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                                Live Preview
+                              </label>
+                            </div>
+
+                            {/* Mobile Frame Container */}
+                            <div className="relative mx-auto max-w-[340px] border-[6px] border-[#1F2937] rounded-[30px] overflow-hidden shadow-2xl bg-[#0b141a]">
+                              {/* Status Bar Mock */}
+                              <div className="h-6 bg-[#0b141a] flex justify-between items-center px-4 pt-1 z-20 relative">
+                                <span className="text-[9px] text-white/60 font-medium">
+                                  9:41
+                                </span>
+                                <div className="flex gap-1.5 opacity-60">
+                                  <div className="w-2.5 h-2.5 rounded-full bg-white/20"></div>
+                                  <div className="w-2.5 h-2.5 rounded-full bg-white/20"></div>
+                                </div>
+                              </div>
+
+                              {/* Chat Area */}
+                              <div className="relative bg-[#0b141a] p-3 min-h-[350px] flex flex-col overflow-y-auto scrollbar-none">
+                                {/* Chat Background Pattern */}
+                                <div className="absolute inset-0 opacity-[0.06] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent bg-[length:24px_24px]"></div>
+                                <div className="absolute inset-0 opacity-[0.03] bg-[url('https://camo.githubusercontent.com/857a221f7c706d8847f9723ec083b063878b2772591f463378b879a838be8194/68747470733a2f2f757365722d696d616765732e67697468756275736572636f6e74656e742e636f6d2f31353037353735392f32383731393134342d38366463306637302d373362312d346334382d393630332d3935303237396532373635382e706e67')] bg-repeat bg-[length:400px]"></div>
+
+                                {/* Message Bubble */}
+                                <div className="relative z-10 w-full max-w-[95%] self-start flex flex-col gap-1.5 mt-2 animate-in slide-in-from-bottom-2 fade-in duration-500">
+                                  <div className="bg-[#202c33] rounded-lg rounded-tl-none shadow-sm relative overflow-hidden group">
+                                    <div className="p-1">
+                                      {/* Header Media */}
+                                      {(selectedTemplate.languages[0]
+                                        ?.headerType === "IMAGE" ||
+                                        selectedTemplate.languages[0]
+                                          ?.headerType === "VIDEO") &&
+                                        (() => {
+                                          const mediaItem =
+                                            selectedTemplate.media?.find(
+                                              (m) =>
+                                                m.language ===
+                                                selectedTemplate.languages[0]
+                                                  .language
+                                            );
+                                          if (mediaItem?.s3Url) {
+                                            if (
+                                              selectedTemplate.languages[0]
+                                                .headerType === "VIDEO"
+                                            ) {
+                                              return (
+                                                <div className="rounded-md overflow-hidden bg-black/20">
+                                                  <video
+                                                    src={mediaItem.s3Url}
+                                                    controls
+                                                    className="w-full h-auto max-h-[180px] object-cover"
+                                                  />
+                                                </div>
+                                              );
+                                            }
+                                            return (
+                                              <div className="rounded-md overflow-hidden bg-black/20">
+                                                <img
+                                                  src={mediaItem.s3Url}
+                                                  alt="Header"
+                                                  className="w-full h-auto max-h-[180px] object-cover hover:scale-105 transition-transform duration-500 will-change-transform"
+                                                />
+                                              </div>
+                                            );
+                                          }
+                                          return (
+                                            <div className="h-28 bg-[#2a3942] flex items-center justify-center rounded-md text-slate-400 text-xs uppercase tracking-wider border border-white/5 mx-0.5 mt-0.5">
+                                              <ImageIcon className="w-5 h-5 mr-2 opacity-50" />
+                                              {
+                                                selectedTemplate.languages[0]
+                                                  .headerType
+                                              }
+                                            </div>
+                                          );
+                                        })()}
+
+                                      {/* Header Text */}
+                                      {selectedTemplate.languages[0]
+                                        ?.headerType === "TEXT" &&
+                                        selectedTemplate.languages[0]
+                                          ?.headerText && (
+                                          <p className="font-bold text-[15px] pt-2 px-2 text-[#e9edef]">
+                                            {
+                                              selectedTemplate.languages[0]
+                                                .headerText
+                                            }
+                                          </p>
+                                        )}
+                                    </div>
+
+                                    {/* Body */}
+                                    <div className="px-3 pt-1 pb-3 text-[15px] leading-snug text-[#e9edef] whitespace-pre-wrap font-sans">
+                                      {(() => {
+                                        let body =
+                                          selectedTemplate.languages[0]?.body ||
+                                          "";
+                                        templateVariables.forEach(
+                                          (val, idx) => {
+                                            const placeholder = `{{${
+                                              idx + 1
+                                            }}}`;
+                                            body = body.replace(
+                                              placeholder,
+                                              val || `{{${idx + 1}}}`
+                                            );
+                                          }
+                                        );
+                                        return body;
+                                      })()}
+                                    </div>
+
+                                    {/* Footer */}
+                                    {selectedTemplate.languages[0]
+                                      ?.footerText && (
+                                      <div className="px-3 pb-2">
+                                        <p className="text-[11px] text-[#8696a0]">
+                                          {
+                                            selectedTemplate.languages[0]
+                                              .footerText
+                                          }
+                                        </p>
+                                      </div>
+                                    )}
+
+                                    {/* Time + Status */}
+                                    <div className="absolute right-2 bottom-1.5 flex items-end gap-1">
+                                      <span className="text-[10px] text-[#8696a0]">
+                                        12:00 PM
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Interactive Buttons (Native Look) */}
+                                  {selectedTemplate.buttons &&
+                                    selectedTemplate.buttons.length > 0 && (
+                                      <div className="space-y-1.5 pt-0.5 w-full">
+                                        {selectedTemplate.buttons.map(
+                                          (btn, i) => (
+                                            <div
+                                              key={i}
+                                              className="bg-[#202c33] rounded-md py-2.5 px-3 flex items-center justify-center gap-2.5 shadow-sm active:scale-[0.99] transition-all cursor-pointer hover:bg-[#2a3942]"
+                                            >
+                                              {btn.type === "PHONE_NUMBER" && (
+                                                <Phone className="w-4 h-4 text-[#00a884]" />
+                                              )}
+                                              {btn.type === "URL" && (
+                                                <Globe className="w-4 h-4 text-[#53bdeb]" />
+                                              )}
+                                              {btn.type === "QUICK_REPLY" && (
+                                                <div className="w-4 h-4 rounded-full border border-[#00a884] flex items-center justify-center">
+                                                  <div className="w-2 h-2 bg-[#00a884] rounded-full"></div>
+                                                </div>
+                                              )}
+                                              <span className="text-[#00a884] font-medium text-sm truncate max-w-[200px]">
+                                                {btn.text}
+                                              </span>
+                                            </div>
+                                          )
+                                        )}
+                                      </div>
+                                    )}
+                                </div>
+                              </div>
+
+                              {/* Home Bar Mock */}
+                              <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1/3 h-1 bg-white/20 rounded-full z-20"></div>
+                            </div>
+                          </div>
+
+                          {templateVariables.length > 0 && (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between ml-1">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest">
+                                  Personalize Variables
+                                </p>
+                                <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-bold">
+                                  {templateVariables.length} Required
+                                </span>
+                              </div>
+                              <div className="grid grid-cols-1 gap-4">
+                                {templateVariables.map((val, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="group flex flex-col gap-1.5 p-3 rounded-xl border border-border hover:border-primary/30 transition-colors"
+                                  >
+                                    <label className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider group-focus-within:text-primary transition-colors">
+                                      Variable {"{{" + (idx + 1) + "}}"}
+                                    </label>
+                                    <input
+                                      type="text"
+                                      value={val}
+                                      onChange={(e) => {
+                                        const next = [...templateVariables];
+                                        next[idx] = e.target.value;
+                                        setTemplateVariables(next);
+                                      }}
+                                      placeholder={`Enter value for placeholder ${
+                                        idx + 1
+                                      }...`}
+                                      className="w-full bg-transparent text-sm outline-none focus:ring-0 placeholder:text-muted-foreground/50 h-6"
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-border flex gap-3">
+                          <button
+                            onClick={() => setSelectedTemplate(null)}
+                            className="flex-1 py-3 rounded-xl border border-border text-sm font-semibold hover:bg-muted transition-colors"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            onClick={handleSendTemplate}
+                            disabled={isSendingTemplate}
+                            className="flex-[2] py-3 rounded-xl bg-primary text-white text-sm font-bold hover:bg-primary/90 disabled:opacity-50 transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+                          >
+                            {isSendingTemplate ? (
+                              <>
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                Sending...
+                              </>
+                            ) : (
+                              <>
+                                <Send className="w-4 h-4" />
+                                Send Template
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Hidden file input for Send Media types (EXCLUDING gallery) */}
+                {mediaModal.type !== "template" &&
+                  mediaModal.type !== "gallery" && (
+                    <div className="mt-6 border-t border-border pt-6">
+                      <input
+                        ref={genericInputRef}
+                        type="file"
+                        multiple
+                        accept={
+                          mediaModal.type === "video"
+                            ? "video/*"
+                            : mediaModal.type === "audio"
+                            ? "audio/*"
+                            : "*"
+                        }
+                        className="hidden"
+                        onChange={async (e) => {
+                          if (!e.target.files?.length) return;
+
+                          try {
+                            for (const rawFile of Array.from(e.target.files)) {
+                              const { file } = await processMedia(rawFile);
+
+                              const form = new FormData();
+                              form.append("conversationId", conversation.id);
+                              form.append("file", file);
+
+                              await api.post(
+                                "/vendor/whatsapp/send-media",
+                                form
+                              );
+                            }
+
+                            setMediaModal(null);
+                          } catch (err) {
+                            const message =
+                              err instanceof Error
+                                ? err.message
+                                : "An error occurred";
+                            toast.error(message);
+                          }
+                        }}
+                      />
+
+                      <button
+                        onClick={() => genericInputRef.current?.click()}
+                        className="w-full bg-primary text-white py-3 rounded-xl font-semibold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Paperclip className="w-4 h-4" />
+                        Choose {mediaModal.type}s
+                      </button>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Hidden file input */}
-              {mediaModal.type !== "template" && (
-                <>
-                  <input
-                    ref={genericInputRef}
-                    type="file"
-                    multiple
-                    accept={
-                      mediaModal.type === "video"
-                        ? "video/*"
-                        : mediaModal.type === "audio"
-                        ? "audio/*"
-                        : "*"
-                    }
-                    className="hidden"
-                    onChange={async (e) => {
-                      if (!e.target.files?.length) return;
-
-                      try {
-                        for (const rawFile of Array.from(e.target.files)) {
-                          const { file } = await processMedia(rawFile);
-
-                          const form = new FormData();
-                          form.append("conversationId", conversation.id);
-                          form.append("file", file);
-
-                          await api.post("/vendor/whatsapp/send-media", form);
-                        }
-
-                        setMediaModal(null);
-                      } catch (err) {
-                        const message =
-                          err instanceof Error
-                            ? err.message
-                            : "An error occurred";
-                        toast.error(message);
-                      }
-                    }}
-                  />
-
-                  <button
-                    onClick={() => genericInputRef.current?.click()}
-                    className="w-full bg-primary text-white py-2 rounded-lg"
-                  >
-                    Choose Files
-                  </button>
-                </>
-              )}
-
-              {/* Template picker is now integrated above */}
-              {mediaModal.type === "template" && null}
+              </div>
             </motion.div>
           </>
         )}
