@@ -6,189 +6,165 @@ import { generateOtp, hashOtp } from "../utils/otp.js";
 import { sendMail } from "../utils/mailer.js";
 import { passwordResetOtpTemplate } from "../emails/passwordResetOtp.template.js";
 
-/* ======================================================
-   SEND OTP
-====================================================== */
+/**
+ * FORGOT PASSWORD
+ */
 export async function forgotPassword(req, res) {
-  try {
-    const { email } = req.body;
+  const { email } = req.body;
 
-    if (!email) {
-      return res.status(400).json({ message: "Email is required" });
-    }
-
-    const user = await prisma.user.findFirst({
-      where: {
-        email,
-        role: { in: ["vendor_owner", "vendor_admin", "sales"] },
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        message: "No account exists with this email",
-      });
-    }
-
-    const resetToken = jwt.sign(
-      { sub: user.id, type: "password_reset" },
-      process.env.PASSWORD_RESET_TOKEN_SECRET,
-      { expiresIn: "1h" }
-    );
-
-    const resetLink = `${process.env.FRONTEND_URL}/forgot-password?token=${resetToken}`;
-    // console.log("🔗 Reset Link:", resetLink);
-
-    await sendMail({
-      to: email,
-      subject: "Reset Your Password",
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #2563EB;">Password Reset</h2>
-            <p>Hello ${user.name},</p>
-            <p>You requested to reset your password. Click the link below to verify your email and set a new password:</p>
-            
-            <div style="margin: 30px 0; text-align: center;">
-                <a href="${resetLink}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Reset Password</a>
-            </div>
-
-            <p style="font-size: 14px; color: #666;">Or paste this link in your browser:</p>
-            <p style="font-size: 14px; color: #666; word-break: break-all;">${resetLink}</p>
-            
-            <p style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #999;">
-                This link is valid for 1 hour. If you didn't request this, please ignore this email.
-            </p>
-        </div>
-      `,
-    });
-
-    return res.json({ message: "Password reset link sent to your email" });
-  } catch (err) {
-    console.error("Forgot password error:", err);
-    return res.status(500).json({ message: "Internal server error" });
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
   }
+  
+  const user = await prisma.user.findFirst({
+    where: {
+      email,
+      role: {
+        in: ["vendor_owner", "vendor_admin", "sales"],
+      },
+    },
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+
+  if (!user) {
+    return res.status(404).json({
+      message: "No account exists with this email",
+    });
+  }
+
+  const otp = generateOtp();
+
+  // Invalidate previous OTPs
+  await prisma.passwordResetOtp.updateMany({
+    where: {
+      userId: user.id,
+      used: false,
+    },
+    data: {
+      used: true,
+    },
+  });
+
+  // Create new OTP
+  await prisma.passwordResetOtp.create({
+    data: {
+      userId: user.id,
+      otpHash: hashOtp(otp),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+    },
+  });
+
+  await sendMail({
+    to: email,
+    ...passwordResetOtpTemplate({
+      name: user.name,
+      otp,
+    }),
+  });
+
+  res.json({ message: "OTP sent to your email" });
 }
 
-/* ======================================================
-   VERIFY OTP
-====================================================== */
+/**
+ * VERIFY OTP
+ */
 export async function verifyForgotOtp(req, res) {
-  try {
-    const { email, otp } = req.body;
+  const { email, otp } = req.body;
 
-    if (!email || !otp) {
-      return res.status(400).json({
-        message: "Email and OTP are required",
-      });
-    }
-
-    const record = await prisma.passwordResetOtp.findFirst({
-      where: {
-        used: false,
-        expiresAt: { gt: new Date() },
-        otpHash: hashOtp(otp),
-        user: { email },
-      },
-      select: {
-        id: true,
-        userId: true,
-      },
+  if (!email || !otp) {
+    return res.status(400).json({
+      message: "Email and OTP are required",
     });
-
-    if (!record) {
-      return res.status(400).json({
-        message: "Invalid or expired OTP",
-      });
-    }
-
-    await prisma.passwordResetOtp.update({
-      where: { id: record.id },
-      data: { used: true },
-    });
-
-    const resetToken = jwt.sign(
-      { sub: record.userId, type: "password_reset" },
-      process.env.PASSWORD_RESET_TOKEN_SECRET,
-      { expiresIn: "10m" }
-    );
-
-    return res.json({ resetToken });
-  } catch (err) {
-    console.error("Verify OTP error:", err);
-    return res.status(500).json({ message: "Internal server error" });
   }
+
+  const otpRecord = await prisma.passwordResetOtp.findFirst({
+    where: {
+      otpHash: hashOtp(otp),
+      used: false,
+      expiresAt: {
+        gt: new Date(),
+      },
+      user: {
+        email,
+      },
+    },
+    select: {
+      id: true,
+      userId: true,
+    },
+  });
+
+  if (!otpRecord) {
+    return res.status(400).json({
+      message: "Invalid or expired OTP",
+    });
+  }
+
+  // Mark OTP as used
+  await prisma.passwordResetOtp.update({
+    where: { id: otpRecord.id },
+    data: { used: true },
+  });
+
+  // Issue reset token (10 minutes)
+  const resetToken = jwt.sign(
+    {
+      sub: otpRecord.userId,
+      type: "password_reset",
+    },
+    process.env.PASSWORD_RESET_TOKEN_SECRET,
+    { expiresIn: "10m" }
+  );
+
+  res.json({ resetToken });
 }
 
-/* ======================================================
-   RESET PASSWORD
-====================================================== */
+/**
+ * RESET PASSWORD
+ */
 export async function resetForgotPassword(req, res) {
-  try {
-    const authHeader = req.headers.authorization;
+  const authHeader = req.headers.authorization;
 
-    if (!authHeader) {
-      return res.status(401).json({ message: "Missing reset token" });
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    let payload;
-    try {
-      console.log("🔍 Verifying Reset Token with RESET SECRET...");
-      payload = jwt.verify(token, process.env.PASSWORD_RESET_TOKEN_SECRET);
-      console.log("✅ Token Verified with RESET SECRET.");
-    } catch (error) {
-      // Fallback: Try with ACCESS_TOKEN_SECRET (for invites generated by older code/different secret)
-      try {
-        console.log("⚠️ RESET SECRET failed. Trying ACCESS SECRET...");
-        payload = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
-        console.log("✅ Token Verified with ACCESS SECRET.");
-      } catch (innerError) {
-        console.error("❌ Token Verification Failed:", innerError.message);
-        return res.status(401).json({
-          message: "Invalid or expired reset token",
-        });
-      }
-    }
-
-    console.log("📝 Reset Payload Type:", payload?.type);
-    console.log("📦 Request Body Keys:", Object.keys(req.body));
-
-    if (!payload || (payload.type !== "password_reset" && payload.type !== "invite" && payload.type !== "access")) {
-      console.error("❌ Invalid Token Type:", payload?.type);
-      return res.status(400).json({ error: "Invalid or expired password reset token" });
-    }
-
-    const { newPassword } = req.body;
-
-    if (!newPassword || newPassword.length < 8) {
-      return res.status(400).json({
-        message: "Password must be at least 8 characters",
-      });
-    }
-
-    await prisma.user.update({
-      where: { id: payload.sub },
-      data: {
-        passwordHash: await bcrypt.hash(newPassword, 10),
-      },
-      select: { id: true }, // 🔍 Prevent crash by only selecting safe ID
+  if (!authHeader) {
+    return res.status(401).json({
+      message: "Missing reset token",
     });
-
-    await prisma.passwordResetOtp.updateMany({
-      where: { userId: payload.sub },
-      data: { used: true },
-    });
-
-    return res.json({
-      message: "Password reset successful",
-    });
-  } catch (err) {
-    console.error("Reset password error:", err);
-    return res.status(500).json({ message: "Internal server error" });
   }
+
+  const token = authHeader.split(" ")[1];
+
+  let payload;
+  try {
+    payload = jwt.verify(token, process.env.PASSWORD_RESET_TOKEN_SECRET);
+  } catch {
+    return res.status(401).json({
+      message: "Invalid or expired reset token",
+    });
+  }
+
+  if (payload.type !== "password_reset") {
+    return res.status(401).json({
+      message: "Invalid token type",
+    });
+  }
+
+  const { newPassword } = req.body;
+
+  if (!newPassword || newPassword.length < 8) {
+    return res.status(400).json({
+      message: "Password must be at least 8 characters",
+    });
+  }
+
+  await prisma.user.update({
+    where: { id: payload.sub },
+    data: {
+      passwordHash: await bcrypt.hash(newPassword, 10),
+    },
+  });
+
+  res.json({ message: "Password reset successful" });
 }
