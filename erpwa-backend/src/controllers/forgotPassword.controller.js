@@ -15,7 +15,7 @@ export async function forgotPassword(req, res) {
   if (!email) {
     return res.status(400).json({ message: "Email is required" });
   }
-  
+
   const user = await prisma.user.findFirst({
     where: {
       email,
@@ -57,17 +57,18 @@ export async function forgotPassword(req, res) {
     },
   });
 
-  await sendMail({
+  sendMail({
     to: email,
     ...passwordResetOtpTemplate({
       name: user.name,
       otp,
     }),
-  });
+  })
+    .then(() => console.log("✅ OTP email sent"))
+    .catch((err) => console.error("❌ OTP email failed:", err));
 
-  res.json({ message: "OTP sent to your email" });
+  return res.json({ message: "OTP sent to your email" });
 }
-
 /**
  * VERIFY OTP
  */
