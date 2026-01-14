@@ -1,6 +1,6 @@
 import express from "express";
 import { upload } from "../middleware/upload.middleware.js";
-import { uploadTemplateMediaToS3 } from "../services/templateMedia.services.js";
+import { uploadTemplateMediaToS3 } from "../services/templateMedia.service.js";
 
 const router = express.Router();
 

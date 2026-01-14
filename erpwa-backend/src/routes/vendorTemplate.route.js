@@ -5,7 +5,7 @@ import { decrypt } from "../utils/encryption.js";
 import { authenticate } from "../middleware/auth.middleware.js";
 import { requireRoles } from "../middleware/requireRole.middleware.js";
 import { asyncHandler } from "../middleware/asyncHandler.js";
-import { uploadTemplateMediaToS3 } from "../services/templateMedia.services.js";
+import { uploadTemplateMediaToS3 } from "../services/templateMedia.service.js";
 import { upload } from "../middleware/upload.middleware.js";
 import { uploadTemplateMediaToMeta } from "../utils/uploadTemplateMediaToMeta.js";
 
