@@ -2,6 +2,7 @@ import prisma from "../prisma.js";
 import { hashPassword } from "../utils/password.js";
 import { sendMail } from "../utils/mailer.js";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
 
 // Force restart for prisma client update
 
@@ -38,12 +39,12 @@ export const listUsers = async (req, res) => {
     }
 };
 
-// Create a new user (sales person)
+// Create a new user (sales person) - sends invite WITHOUT OTP
 export const createUser = async (req, res) => {
-    const { name, email, role, password } = req.body;
+    const { name, email, role } = req.body;
 
-    if (!name || !email || !role || !password) {
-        return res.status(400).json({ message: "All fields are required" });
+    if (!name || !email || !role) {
+        return res.status(400).json({ message: "Name, email, and role are required" });
     }
 
     try {
@@ -53,15 +54,15 @@ export const createUser = async (req, res) => {
             return res.status(400).json({ message: "Email already in use" });
         }
 
-        const passwordHash = await hashPassword(password);
+        // Generate a random temporary password (user won't use this directly)
+        const tempPassword = crypto.randomBytes(32).toString("hex");
+        const passwordHash = await hashPassword(tempPassword);
 
         const user = await prisma.user.create({
             data: {
                 name,
                 email,
                 role,
-                passwordHash,
-                vendorId: req.user.vendorId,
                 passwordHash,
                 vendorId: req.user.vendorId,
             },
@@ -77,43 +78,58 @@ export const createUser = async (req, res) => {
             },
         });
 
-        // Generate Invite Token (reusing password reset logic)
-        console.log("🔑 Generating Invite Token with RESET SECRET for user:", user.id);
+        // Generate invite token for the link (24 hours - long enough to set password)
         const inviteToken = jwt.sign(
-            { sub: user.id, type: "invite", role: role },
+            { sub: user.id, type: "invite", email: email },
             process.env.PASSWORD_RESET_TOKEN_SECRET,
-            { expiresIn: "36500d" }
+            { expiresIn: "24h" }
         );
 
         const inviteLink = `${process.env.FRONTEND_URL}/create-password?token=${inviteToken}`;
 
-        // Send welcome email with Link
+        // Send invite email WITHOUT OTP (user will request OTP from the page)
         try {
-            await sendMail({
+            const emailResult = await sendMail({
                 to: email,
-                subject: "Welcome to WhatsApp ERP - Activate Your Account",
+                subject: "Welcome to WhatsApp ERP - Set Up Your Account",
                 html: `
                     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                         <h2 style="color: #2563EB;">Welcome to the Team, ${name}!</h2>
                         <p>Your account has been created successfully.</p>
-                        <p>To get started, please click the link below to set your secure password and activate your account:</p>
-                        
+                        <p>To activate your account and set your password, click the button below:</p>
+
                         <div style="margin: 30px 0; text-align: center;">
-                            <a href="${inviteLink}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold;">Set Your Password</a>
+                            <a href="${inviteLink}" style="background-color: #2563EB; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Set Up Your Password</a>
                         </div>
 
                         <p style="font-size: 14px; color: #666;">Or copy this link to your browser:</p>
                         <p style="font-size: 14px; color: #666; word-break: break-all;">${inviteLink}</p>
                         
-                        <p style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #999;">
-                            This link is valid for 7 days.
+                        <p style="margin-top: 30px; padding-top: 20px; font-size: 13px; color: #666;">
+                            <strong>Next steps:</strong><br>
+                            1. Click the link above<br>
+                            2. Request a verification code<br>
+                            3. Enter the code from your email<br>
+                            4. Set your password
+                        </p>
+                        
+                        <p style="border-top: 1px solid #eee; padding-top: 20px; font-size: 12px; color: #999;">
+                            This link is valid for 24 hours.
                         </p>
                     </div>
                 `
             });
+            console.log("✅ Invite email sent successfully");
         } catch (mailError) {
-            console.error("Failed to send welcome email:", mailError);
-            // Don't fail the request if email fails, just log it
+            console.error("❌ FAILED to send invite email");
+            console.error("❌ Error:", mailError.message);
+
+            // Roll back user creation if email fails
+            await prisma.user.delete({ where: { id: user.id } });
+            return res.status(500).json({
+                message: "Failed to send invite email. Please try again.",
+                errorDetails: mailError.message
+            });
         }
 
         res.status(201).json(user);

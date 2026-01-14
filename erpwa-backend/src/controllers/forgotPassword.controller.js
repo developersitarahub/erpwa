@@ -48,12 +48,12 @@ export async function forgotPassword(req, res) {
     },
   });
 
-  // Create new OTP
+  // Create new OTP (15 minutes)
   await prisma.passwordResetOtp.create({
     data: {
       userId: user.id,
       otpHash: hashOtp(otp),
-      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
     },
   });
 
@@ -69,6 +69,7 @@ export async function forgotPassword(req, res) {
 
   return res.json({ message: "OTP sent to your email" });
 }
+
 /**
  * VERIFY OTP
  */
@@ -110,14 +111,14 @@ export async function verifyForgotOtp(req, res) {
     data: { used: true },
   });
 
-  // Issue reset token (10 minutes)
+  // Issue reset token (15 minutes)
   const resetToken = jwt.sign(
     {
       sub: otpRecord.userId,
       type: "password_reset",
     },
     process.env.PASSWORD_RESET_TOKEN_SECRET,
-    { expiresIn: "10m" }
+    { expiresIn: "15m" }
   );
 
   res.json({ resetToken });
@@ -140,13 +141,13 @@ export async function resetForgotPassword(req, res) {
   let payload;
   try {
     payload = jwt.verify(token, process.env.PASSWORD_RESET_TOKEN_SECRET);
-  } catch {
+  } catch (err) {
     return res.status(401).json({
       message: "Invalid or expired reset token",
     });
   }
 
-  if (payload.type !== "password_reset") {
+  if (payload.type !== "password_reset" && payload.type !== "invite") {
     return res.status(401).json({
       message: "Invalid token type",
     });
@@ -160,6 +161,7 @@ export async function resetForgotPassword(req, res) {
     });
   }
 
+  // Update password
   await prisma.user.update({
     where: { id: payload.sub },
     data: {
@@ -167,5 +169,13 @@ export async function resetForgotPassword(req, res) {
     },
   });
 
-  res.json({ message: "Password reset successful" });
+  // Invalidate all refresh tokens for this user (force re-login everywhere)
+  await prisma.refreshToken.deleteMany({
+    where: { userId: payload.sub },
+  });
+
+  res.json({
+    message: "Password reset successful",
+    requiresRelogin: true // Signal to frontend to logout
+  });
 }

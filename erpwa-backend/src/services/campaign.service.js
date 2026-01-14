@@ -98,6 +98,7 @@ class CampaignService {
 
     // 1️⃣ Fetch images
     const MAX_IMAGES_PER_CONVERSATION = 30;
+    const finalLimit = Math.min(imageLimit, MAX_IMAGES_PER_CONVERSATION);
 
     // Fetch all images (no take here)
     const images = await prisma.galleryImage.findMany({
@@ -109,7 +110,7 @@ class CampaignService {
     });
 
     // 🚨 HARD SAFETY CAP
-    const safeImages = images.slice(0, MAX_IMAGES_PER_CONVERSATION);
+    const safeImages = images.slice(0, finalLimit);
 
     if (!safeImages.length) {
       throw new Error("No images found");
@@ -153,7 +154,7 @@ class CampaignService {
 
     // 4️⃣ Queue messages + media + delivery
     for (const conv of conversations) {
-      for (const image of images) {
+      for (const image of safeImages) {
         const caption =
           captionMode === "TITLE"
             ? image.title

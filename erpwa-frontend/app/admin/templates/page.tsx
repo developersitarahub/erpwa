@@ -61,6 +61,12 @@ type Template = {
     text: string;
     value?: string;
   }[];
+  media?: {
+    id: string;
+    mediaType: string;
+    s3Url: string;
+    language: string;
+  }[];
 };
 
 export default function TemplatesPage() {
@@ -196,7 +202,8 @@ export default function TemplatesPage() {
     }
 
     setHeaderFile(null);
-    setHeaderPreview(null);
+    const media = template.media?.find((m) => m.language === lang?.language);
+    setHeaderPreview(media?.s3Url || null);
     setEditId(template.id);
     setShowCreateModal(true);
   };
@@ -295,10 +302,10 @@ export default function TemplatesPage() {
           prev.map((t) =>
             t.id === editId
               ? {
-                  ...t,
-                  displayName: formData.displayName,
-                  category: formData.category,
-                }
+                ...t,
+                displayName: formData.displayName,
+                category: formData.category,
+              }
               : t
           )
         );
@@ -477,8 +484,7 @@ export default function TemplatesPage() {
           toast.error(`Failed to send: ${firstError}`);
         } else {
           toast.warning(
-            `${results.length - failed.length} sent, ${
-              failed.length
+            `${results.length - failed.length} sent, ${failed.length
             } failed. First error: ${firstError}`
           );
         }
@@ -522,6 +528,15 @@ export default function TemplatesPage() {
             Draft
           </Badge>
         );
+    }
+  };
+
+  const formatTime = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (e) {
+      return "12:00";
     }
   };
 
@@ -642,7 +657,7 @@ export default function TemplatesPage() {
                           {t.languages[0]?.body || "No content"}
                         </p>
                         <div className="text-[9px] text-muted-foreground text-right mt-1 font-medium">
-                          12:00
+                          {formatTime(t.createdAt)}
                         </div>
                       </div>
                     </div>
@@ -653,12 +668,12 @@ export default function TemplatesPage() {
                         variant="ghost"
                         size="sm"
                         className={cn(
-                          "flex-1 h-8 text-xs hover:bg-muted/60",
+                          "flex-1 h-8 text-xs font-bold transition-all",
                           t.status === "draft"
-                            ? "text-blue-600 hover:text-blue-700 bg-blue-50/50"
+                            ? "text-blue-600 bg-blue-500/5 hover:bg-blue-500/10"
                             : t.status === "approved"
-                            ? "text-green-600 hover:text-green-700 bg-green-50/50"
-                            : "text-muted-foreground hover:text-foreground"
+                              ? "text-green-600 bg-green-500/5 hover:bg-green-500/10"
+                              : "text-muted-foreground bg-muted/30 hover:bg-muted/50"
                         )}
                         onClick={(e) => {
                           if (t.status === "approved") {
@@ -684,14 +699,14 @@ export default function TemplatesPage() {
                         {t.status === "draft"
                           ? "Submit"
                           : t.status === "approved"
-                          ? "Send"
-                          : "Sync"}
+                            ? "Send"
+                            : "Sync"}
                       </Button>
                       <div className="w-px h-4 bg-border/60"></div>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="flex-1 h-8 text-xs text-red-500/80 hover:text-red-600 hover:bg-red-500/10"
+                        className="flex-1 h-8 text-xs font-bold text-red-500/80 bg-red-500/5 hover:text-red-600 hover:bg-red-500/10 transition-all font-bold"
                         onClick={(e) => handleDelete(t, e)}
                         disabled={!!deleting}
                       >
@@ -754,7 +769,48 @@ export default function TemplatesPage() {
                       Preview
                     </label>
                     <div className="bg-white dark:bg-card p-4 rounded-lg shadow-sm border border-border/20 text-sm whitespace-pre-wrap leading-relaxed">
-                      {selectedTemplate.languages[0]?.body}
+                      {/* Media Header Preview */}
+                      {selectedTemplate.languages[0]?.headerType !== "TEXT" && (() => {
+                        const mediaItem = selectedTemplate.media?.find(m => m.language === selectedTemplate.languages[0]?.language);
+                        if (mediaItem?.s3Url) {
+                          if (selectedTemplate.languages[0].headerType === "IMAGE") {
+                            return (
+                              <div className="rounded-lg overflow-hidden aspect-video bg-muted/20 border border-border/10 mb-3 shadow-md">
+                                <img src={mediaItem.s3Url} alt="Header" className="w-full h-full object-cover" />
+                              </div>
+                            );
+                          } else if (selectedTemplate.languages[0].headerType === "VIDEO") {
+                            return (
+                              <div className="rounded-lg overflow-hidden aspect-video bg-muted/20 border border-border/10 mb-3 relative shadow-md">
+                                <video src={mediaItem.s3Url} className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                                  <div className="w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-white">
+                                    <Video className="w-5 h-5" />
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                        }
+                        return null;
+                      })()}
+
+                      {/* Header Text Preview */}
+                      {selectedTemplate.languages[0]?.headerType === "TEXT" && selectedTemplate.languages[0]?.headerText && (
+                        <p className="font-bold text-sm mb-2 text-foreground">
+                          {selectedTemplate.languages[0].headerText}
+                        </p>
+                      )}
+
+                      <div className="text-foreground/90">
+                        {selectedTemplate.languages[0]?.body}
+                      </div>
+
+                      {selectedTemplate.languages[0]?.footerText && (
+                        <p className="mt-3 text-[11px] text-muted-foreground border-t border-border/40 pt-2 italic">
+                          {selectedTemplate.languages[0].footerText}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -931,7 +987,7 @@ export default function TemplatesPage() {
                                       l.category_name === selectedCategory) &&
                                     (!selectedSubCategory ||
                                       l.sub_category_name ===
-                                        selectedSubCategory)
+                                      selectedSubCategory)
                                 )
                                 .every((l) =>
                                   recipientList.includes(l.mobile_number)
@@ -1037,7 +1093,7 @@ export default function TemplatesPage() {
                                 checked={recipientList.includes(
                                   lead.mobile_number
                                 )}
-                                onChange={() => {}} // handled by parent div click
+                                onChange={() => { }} // handled by parent div click
                                 className="pointer-events-none"
                               />
                               <div className="flex flex-col">
@@ -1321,13 +1377,13 @@ export default function TemplatesPage() {
                                   formData.headerType === "IMAGE"
                                     ? "image/*"
                                     : formData.headerType === "VIDEO"
-                                    ? "video/*"
-                                    : ".pdf"
+                                      ? "video/*"
+                                      : ".pdf"
                                 }
                                 onChange={handleFileChange}
                               />
 
-                              {headerFile ? (
+                              {headerFile || headerPreview ? (
                                 <div className="text-center space-y-2">
                                   {headerPreview && (
                                     <img
@@ -1339,7 +1395,7 @@ export default function TemplatesPage() {
                                   <div className="flex items-center gap-2 bg-background p-1.5 rounded border border-border/50 text-xs shadow-sm">
                                     <Paperclip className="w-3 h-3" />
                                     <span className="font-medium truncate max-w-[150px]">
-                                      {headerFile.name}
+                                      {headerFile ? headerFile.name : (formData.headerType + " Attached")}
                                     </span>
                                     <Button
                                       variant="ghost"
@@ -1348,6 +1404,7 @@ export default function TemplatesPage() {
                                       onClick={(e) => {
                                         e.stopPropagation();
                                         setHeaderFile(null);
+                                        setHeaderPreview(null);
                                       }}
                                     >
                                       <X className="w-3 h-3" />
@@ -1504,19 +1561,19 @@ export default function TemplatesPage() {
                               />
                               {(btn.type === "URL" ||
                                 btn.type === "PHONE_NUMBER") && (
-                                <Input
-                                  className="h-8 text-sm"
-                                  placeholder={
-                                    btn.type === "URL"
-                                      ? "https://website.com"
-                                      : "+1234567890"
-                                  }
-                                  value={btn.value}
-                                  onChange={(e) =>
-                                    updateButton(idx, "value", e.target.value)
-                                  }
-                                />
-                              )}
+                                  <Input
+                                    className="h-8 text-sm"
+                                    placeholder={
+                                      btn.type === "URL"
+                                        ? "https://website.com"
+                                        : "+1234567890"
+                                    }
+                                    value={btn.value}
+                                    onChange={(e) =>
+                                      updateButton(idx, "value", e.target.value)
+                                    }
+                                  />
+                                )}
                             </div>
                             <Button
                               variant="ghost"

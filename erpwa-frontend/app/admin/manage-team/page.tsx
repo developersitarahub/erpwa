@@ -28,8 +28,7 @@ export default function ManageTeam() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    role: "sales",
-    password: ""
+    role: "sales"
   })
 
   useEffect(() => {
@@ -82,11 +81,15 @@ export default function ManageTeam() {
   }
 
   const handleEditClick = (member: User) => {
+    // Only allow owner to edit anyone's name
+    if (user?.role !== "vendor_owner") {
+      toast.error("Only the owner can edit user names")
+      return
+    }
     setFormData({
       name: member.name,
       email: member.email,
-      role: member.role,
-      password: "" // Keep empty to not change
+      role: member.role
     })
     setEditingId(member.id)
     setIsEditMode(true)
@@ -94,7 +97,7 @@ export default function ManageTeam() {
   }
 
   const openAddModal = () => {
-    setFormData({ name: "", email: "", role: "sales", password: "" })
+    setFormData({ name: "", email: "", role: "sales" })
     setEditingId(null)
     setIsEditMode(false)
     setIsModalOpen(true)
@@ -103,21 +106,18 @@ export default function ManageTeam() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // simple email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(formData.email)) {
-      toast.error("Please enter a valid email address")
-      return
-    }
-
-    // Strong password validation
-    // Min 8 chars, 1 uppercase, 1 lowercase, 1 number, 1 special char
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/
-
-    // Validate password if creating new user OR if editing and password field is not empty
-    if (!isEditMode || formData.password) {
-      if (!passwordRegex.test(formData.password)) {
-        toast.error("Password must be at least 8 characters, include uppercase, lowercase, number & special character.")
+    // When editing, only allow name changes for owner
+    if (isEditMode) {
+      if (user?.role !== "vendor_owner") {
+        toast.error("Only the owner can edit users")
+        return
+      }
+      // Only update the name field
+    } else {
+      // simple email validation for new user
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(formData.email)) {
+        toast.error("Please enter a valid email address")
         return
       }
     }
@@ -126,11 +126,13 @@ export default function ManageTeam() {
 
     try {
       if (isEditMode && editingId) {
-        await usersAPI.update(editingId, formData)
-        toast.success("Team member updated successfully")
+        // Only send name for update
+        await usersAPI.update(editingId, { name: formData.name })
+        toast.success("Name updated successfully")
       } else {
+        // Create user without password - backend will send invite
         await usersAPI.create(formData)
-        toast.success("Team member added successfully")
+        toast.success("Invite sent to team member")
       }
       setIsModalOpen(false)
       fetchUsers()
@@ -154,16 +156,7 @@ export default function ManageTeam() {
     }
   }
 
-  const handleStatusToggle = async (id: string, currentStatus: string) => {
-    const newStatus = currentStatus === "active" ? "inactive" : "active"
-    try {
-      await usersAPI.update(id, { status: newStatus })
-      toast.success(`User set to ${newStatus}`)
-      fetchUsers()
-    } catch (error) {
-      toast.error("Failed to update status")
-    }
-  }
+
 
   const userRole = user?.role
 
@@ -250,25 +243,18 @@ export default function ManageTeam() {
                           </div>
                         </td>
                         <td className="py-4 px-4 md:px-6 flex gap-2">
-                          <button
-                            onClick={() => handleEditClick(member)}
-                            className="p-2 hover:bg-muted rounded-lg transition-colors text-primary"
-                            title="Edit User"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-
-                          {/* Ban/Unban Action */}
-                          {member.role !== "vendor_owner" && !(userRole === "vendor_admin" && member.role === "vendor_admin") && (
+                          {/* Owner can edit anyone's name */}
+                          {userRole === "vendor_owner" && (
                             <button
-                              onClick={() => handleStatusToggle(member.id, member.status)}
-                              className={`p-2 rounded-lg transition-colors ${member.status === 'active' ? 'hover:bg-destructive/10 text-destructive' : 'hover:bg-green-100 text-green-600'}`}
-                              title={member.status === 'active' ? "Disable Account" : "Activate Account"}
+                              onClick={() => handleEditClick(member)}
+                              className="p-2 hover:bg-muted rounded-lg transition-colors text-primary"
+                              title="Edit Name"
                             >
-                              {member.status === 'active' ? <Ban className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+                              <Edit2 className="w-4 h-4" />
                             </button>
                           )}
 
+                          {/* Delete button - only for non-owners */}
                           {member.role !== "vendor_owner" && !(userRole === "vendor_admin" && member.role === "vendor_admin") && (
                             <button
                               onClick={() => handleDelete(member.id)}
@@ -298,7 +284,7 @@ export default function ManageTeam() {
             className="bg-card w-full max-w-md rounded-xl shadow-lg border border-border mt-16 md:mt-0"
           >
             <div className="flex justify-between items-center p-6 border-b border-border">
-              <h2 className="text-lg font-semibold text-foreground">{isEditMode ? "Edit Team Member" : "Add Team Member"}</h2>
+              <h2 className="text-lg font-semibold text-foreground">{isEditMode ? "Edit Name" : "Add Team Member"}</h2>
               <button onClick={() => setIsModalOpen(false)} className="text-muted-foreground hover:text-foreground">
                 <X className="w-5 h-5" />
               </button>
@@ -316,57 +302,44 @@ export default function ManageTeam() {
                 />
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Email Address</label>
-                <Input
-                  name="email"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  placeholder="john@company.com"
-                  required
-                />
-              </div>
+              {!isEditMode && (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Email Address</label>
+                    <Input
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleInputChange}
+                      placeholder="john@company.com"
+                      required
+                    />
+                  </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Role</label>
-                {formData.role === "vendor_owner" ? (
-                  <Input
-                    value="Vendor Owner"
-                    disabled
-                    className="bg-muted opacity-100 font-medium"
-                  />
-                ) : (
-                  <select
-                    name="role"
-                    value={formData.role}
-                    onChange={handleInputChange}
-                    disabled={userRole === "vendor_admin"}
-                    className="w-full flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-100"
-                  >
-                    <option value="sales">Sales Executive</option>
-                    {/* Only Owners can create Admins */}
-                    {userRole === "vendor_owner" && (
-                      <option value="vendor_admin">Admin</option>
-                    )}
-                  </select>
-                )}
-              </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Role</label>
+                    <select
+                      name="role"
+                      value={formData.role}
+                      onChange={handleInputChange}
+                      disabled={userRole === "vendor_admin"}
+                      className="w-full flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-100"
+                    >
+                      <option value="sales">Sales Executive</option>
+                      {/* Only Owners can create Admins */}
+                      {userRole === "vendor_owner" && (
+                        <option value="vendor_admin">Admin</option>
+                      )}
+                    </select>
+                  </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Password {isEditMode && "(Leave empty to keep current)"}</label>
-                <Input
-                  name="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  placeholder={isEditMode ? "Enter new password to change" : "Set initial password"}
-                  required={!isEditMode}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Strong password required: 8+ chars, uppercase, lowercase, number & special char (@$!%*?&).
-                </p>
-              </div>
+                  <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-4 rounded-lg">
+                    <p className="text-sm text-blue-900 dark:text-blue-100">
+                      📧 An invitation email will be sent with instructions to set up their password.
+                    </p>
+                  </div>
+                </>
+              )}
 
               <div className="pt-4 flex justify-end gap-3">
                 <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
@@ -374,10 +347,10 @@ export default function ManageTeam() {
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {isEditMode ? "Updating..." : "Adding..."}
+                      {isEditMode ? "Updating..." : "Sending Invite..."}
                     </>
                   ) : (
-                    isEditMode ? "Update Member" : "Add Member"
+                    isEditMode ? "Update Name" : "Send Invite"
                   )}
                 </Button>
               </div>

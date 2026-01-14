@@ -28,7 +28,9 @@ const refreshApi = axios.create({
 
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (accessToken && config.headers) {
+    // Only add accessToken if Authorization header is not already set
+    // This allows manual override (e.g., for password reset with resetToken)
+    if (accessToken && config.headers && !config.headers.Authorization) {
       config.headers.Authorization = `Bearer ${accessToken}`;
     }
     return config;
