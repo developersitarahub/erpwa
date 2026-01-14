@@ -39,6 +39,21 @@ import { cn } from "@/lib/utils";
 import { leadsAPI } from "@/lib/leadsApi";
 import { Lead } from "@/lib/types";
 
+const formatError = (error: any, defaultMsg: string) => {
+  const errorData = error.response?.data;
+  let msg = errorData?.details?.error_user_msg || errorData?.details?.message || errorData?.message || defaultMsg;
+  const title = errorData?.details?.error_user_title;
+
+  // Shorten specific common Meta messages
+  if (msg.includes("too many variables for its length")) {
+    msg = "Too many variables for the text length.";
+  } else if (msg.includes("more than two consecutive newline characters")) {
+    msg = "Invalid body: Check newlines, parameters, or emojis.";
+  }
+
+  return title ? `${title}: ${msg}` : msg;
+};
+
 // Types
 type Template = {
   id: string;
@@ -320,7 +335,7 @@ export default function TemplatesPage() {
 
       setShowCreateModal(false);
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to save template");
+      toast.error(formatError(error, "Failed to save template"));
     } finally {
       setIsCreating(false);
     }
@@ -341,7 +356,7 @@ export default function TemplatesPage() {
       toast.success("Template submitted to Meta successfully!");
       fetchTemplates();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to submit template");
+      toast.error(formatError(error, "Failed to submit template"));
     } finally {
       setSubmitting(null);
     }
@@ -355,7 +370,7 @@ export default function TemplatesPage() {
       toast.success(res.data.message || "Status synced successfully");
       fetchTemplates();
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to sync status");
+      toast.error(formatError(error, "Failed to sync status"));
     } finally {
       setSyncing(null);
     }
@@ -380,7 +395,7 @@ export default function TemplatesPage() {
       toast.success("Template deleted successfully");
       setTemplates((prev) => prev.filter((t) => t.id !== id));
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to delete template");
+      toast.error(formatError(error, "Failed to delete template"));
     } finally {
       setDeleting(null);
       setDeleteConf({ isOpen: false });
@@ -493,7 +508,7 @@ export default function TemplatesPage() {
         setShowSendModal(false);
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Failed to send");
+      toast.error(formatError(error, "Failed to send"));
     } finally {
       setSending(false);
     }
@@ -775,15 +790,15 @@ export default function TemplatesPage() {
                         if (mediaItem?.s3Url) {
                           if (selectedTemplate.languages[0].headerType === "IMAGE") {
                             return (
-                              <div className="rounded-lg overflow-hidden aspect-video bg-muted/20 border border-border/10 mb-3 shadow-md">
-                                <img src={mediaItem.s3Url} alt="Header" className="w-full h-full object-cover" />
+                              <div className="rounded-lg overflow-hidden bg-black/40 border border-border/10 mb-3 shadow-md flex items-center justify-center min-h-[140px]">
+                                <img src={mediaItem.s3Url} alt="Header" className="w-full h-full object-contain" />
                               </div>
                             );
                           } else if (selectedTemplate.languages[0].headerType === "VIDEO") {
                             return (
-                              <div className="rounded-lg overflow-hidden aspect-video bg-muted/20 border border-border/10 mb-3 relative shadow-md">
-                                <video src={mediaItem.s3Url} className="w-full h-full object-cover" />
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <div className="rounded-lg overflow-hidden bg-black/40 border border-border/10 mb-3 relative shadow-md flex items-center justify-center min-h-[140px]">
+                                <video src={mediaItem.s3Url} className="w-full h-full object-contain" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/10">
                                   <div className="w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-white">
                                     <Video className="w-5 h-5" />
                                   </div>
@@ -1594,7 +1609,7 @@ export default function TemplatesPage() {
                 <div
                   className={cn(
                     "bg-[#F0F2F5] dark:bg-[#0c1317] p-8 flex-col items-center justify-center relative border-l border-border/50 overflow-hidden transition-all",
-                    "lg:flex lg:col-span-5 xl:col-span-4 lg:static lg:z-auto lg:p-8 lg:pt-8", // Desktop defaults (force static to override mobile fixed)
+                    "lg:flex lg:col-span-5 xl:col-span-4 lg:static lg:z-auto lg:p-4 lg:pt-4", // Desktop defaults
                     showMobilePreview
                       ? "flex fixed inset-0 z-50 pt-24 pb-8"
                       : "hidden" // Mobile overlay
@@ -1611,104 +1626,86 @@ export default function TemplatesPage() {
                     </Button>
                   )}
                   <div className="absolute inset-0 pattern-dots opacity-10 pointer-events-none"></div>
-                  <div className="relative w-[300px] h-[600px] bg-black rounded-[40px] shadow-2xl border-[8px] border-zinc-900 overflow-hidden ring-1 ring-white/20">
-                    {/* Phone Notch/Status Bar */}
-                    <div className="absolute top-0 left-0 right-0 h-8 bg-zinc-900 z-20 flex justify-center">
-                      <div className="w-32 h-6 bg-black rounded-b-xl"></div>
+
+                  {/* Mobile Frame Container - Elegantly elongated and responsive */}
+                  <div className="relative mx-auto w-full max-w-[280px] border-[10px] border-[#1F2937] rounded-[48px] shadow-2xl bg-[#0b141a] transition-all duration-500 overflow-hidden transform lg:scale-[1.02] 2xl:scale-105">
+                    <div className="h-6 bg-[#0b141a] flex justify-between items-center px-6 pt-3 z-20 relative">
+                      <span className="text-[10px] text-white font-semibold">9:41</span>
+                      <div className="flex gap-1.5 opacity-50 italic font-bold text-[10px] text-white">WhatsApp</div>
                     </div>
 
-                    {/* WhatsApp Header Fake */}
-                    <div className="h-16 bg-[#008069] flex items-end pb-3 px-4 text-white z-10 relative shadow-sm">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                          <Users className="w-5 h-5" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold leading-none">
-                            Business Name
-                          </div>
-                          <div className="text-[10px] opacity-80 mt-0.5">
-                            Online
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                    <div className="relative bg-[#0b141a] p-3 pt-4 min-h-[500px] max-h-[550px] overflow-y-auto custom-scrollbar flex flex-col">
+                      <div className="absolute inset-0 opacity-[0.05] bg-[url('https://camo.githubusercontent.com/857a221f7c706d8847f9723ec083b063878b2772591f463378b879a838be8194/68747470733a2f2f757365722d696d616765732e67697468756275736572636f6e74656e742e636f6d2f31353037353735392f32383731393134342d38366463306637302d373362312d346334382d393630332d3935303237396532373635382e706e67')] bg-repeat bg-[length:400px]"></div>
 
-                    {/* Chat Area */}
-                    <div className="flex-1 bg-[#efe7dd] dark:bg-[#0b141a] p-3 relative flex flex-col pt-4 overflow-y-auto">
-                      <div className="absolute inset-0 opacity-[0.4] bg-[url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')] bg-repeat"></div>
-
-                      {/* Date Bubble */}
-                      <div className="self-center bg-[#e1f3fb] dark:bg-[#1f2c34] rounded-lg px-2 py-1 mb-4 z-10 shadow-sm">
-                        <span className="text-[10px] text-gray-600 dark:text-gray-300 font-medium">
-                          Today
-                        </span>
-                      </div>
-
-                      {/* Message Bubble */}
-                      <div className="bg-white dark:bg-[#202c33] rounded-tl-none rounded-tr-lg rounded-bl-lg rounded-br-lg p-1 shadow-sm max-w-[90%] self-start z-10 relative">
-                        {/* Tail */}
-                        <div className="absolute -left-1.5 top-0 w-3 h-3 bg-white dark:bg-[#202c33] [clip-path:polygon(100%_0,0_0,100%_100%)]"></div>
-
-                        <div className="p-1">
-                          {formData.headerType === "IMAGE" && (
-                            <div className="bg-gray-200 dark:bg-gray-700 rounded-md h-36 w-full mb-1 overflow-hidden flex items-center justify-center">
-                              {headerPreview ? (
-                                <img
-                                  src={headerPreview}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <ImageIcon className="text-gray-400 w-8 h-8" />
-                              )}
-                            </div>
-                          )}
-                          {formData.headerType === "TEXT" && (
-                            <div className="px-2 pt-1 font-bold text-sm text-foreground">
-                              {formData.displayName}
-                            </div>
-                          )}
-
-                          <div className="px-2 pt-1 pb-4 text-[13px] text-gray-800 dark:text-gray-200 leading-snug whitespace-pre-wrap">
-                            {formData.body || "Your message body..."}
-                          </div>
-
-                          {formData.footerText && (
-                            <div className="px-2 pb-1 text-[10px] text-gray-500 dark:text-gray-400">
-                              {formData.footerText}
-                            </div>
-                          )}
-                        </div>
-                        <div className="absolute bottom-1 right-2 text-[10px] text-gray-500 flex items-center gap-1">
-                          12:00 PM
-                        </div>
-                      </div>
-
-                      {/* Buttons in Chat */}
-                      {buttons.length > 0 && (
-                        <div className="mt-1 max-w-[90%] self-start z-10 gap-1 flex flex-col w-full">
-                          {buttons.map((btn, i) => (
-                            <div
-                              key={i}
-                              className="bg-white dark:bg-[#202c33] rounded-lg py-2.5 text-center shadow-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-[#2a3942] transition-colors"
-                            >
-                              <div className="flex items-center justify-center gap-2 text-[#0084ff] text-sm font-medium">
-                                {btn.type === "URL" && (
-                                  <Globe className="w-3.5 h-3.5" />
+                      <div className="relative z-10 w-full flex flex-col gap-1 mt-1 animate-in fade-in zoom-in-95 duration-500">
+                        <div className="bg-[#202c33] rounded-2xl rounded-tl-none shadow-lg relative overflow-hidden group border border-white/5">
+                          <div className="p-1">
+                            {/* Header Media */}
+                            {(formData.headerType === "IMAGE" || formData.headerType === "VIDEO") && (
+                              <div className="rounded-xl overflow-hidden bg-black/40 min-h-[140px] relative group flex items-center justify-center">
+                                {headerPreview ? (
+                                  formData.headerType === "VIDEO" ? (
+                                    <video src={headerPreview} className="w-full h-full object-contain" />
+                                  ) : (
+                                    <img src={headerPreview} alt="Header" className="w-full h-full object-contain" />
+                                  )
+                                ) : (
+                                  <div className="flex flex-col items-center gap-1 opacity-20">
+                                    {formData.headerType === "IMAGE" ? <ImageIcon className="w-6 h-6" /> : <Video className="w-6 h-6" />}
+                                    <span className="text-[8px] font-bold uppercase">{formData.headerType}</span>
+                                  </div>
                                 )}
-                                {btn.type === "PHONE_NUMBER" && (
-                                  <Phone className="w-3.5 h-3.5" />
-                                )}
-                                {btn.text || "Button"}
                               </div>
+                            )}
+
+                            {/* Header Text */}
+                            {formData.headerType === "TEXT" && formData.headerText && (
+                              <p className="font-bold text-[14px] pt-2 px-3 text-[#e9edef] leading-tight">
+                                {formData.headerText}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="px-3 pt-1 pb-3 text-[13px] leading-snug text-[#e9edef] whitespace-pre-wrap font-sans">
+                            {formData.body || "Your message body..."}
+
+                            {formData.footerText && (
+                              <p className="mt-1.5 text-[11px] text-[#8696a0] font-medium border-t border-white/5 pt-1.5">
+                                {formData.footerText}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Buttons */}
+                          {buttons.length > 0 && (
+                            <div className="border-t border-white/10 flex flex-col divide-y divide-white/10 bg-[#2a3942]/30">
+                              {buttons.map((btn, idx) => (
+                                <div key={idx} className="p-2.5 text-center text-[13px] font-medium text-[#00a884] flex items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer">
+                                  {btn.type === "URL" ? (
+                                    <Globe className="w-3.5 h-3.5" />
+                                  ) : btn.type === "PHONE_NUMBER" ? (
+                                    <Phone className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <CheckCircle className="w-3.5 h-3.5" />
+                                  )}
+                                  {btn.text || "Button Label"}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
-                      )}
+
+                        <div className="self-end mr-1 mt-0.5 flex items-center gap-1 opacity-40">
+                          <span className="text-[10px] text-white font-bold uppercase tracking-tighter">9:41 AM</span>
+                          <div className="flex -space-x-1">
+                            <CheckCircle className="w-2.5 h-2.5 text-white" />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <p className="text-[10px] text-muted-foreground mt-6 font-medium tracking-wide">
-                    PREVIEW MODE
+                  <p className="text-[10px] text-muted-foreground mt-4 font-bold tracking-widest uppercase opacity-40">
+                    Live Preview
                   </p>
                 </div>
               </div>

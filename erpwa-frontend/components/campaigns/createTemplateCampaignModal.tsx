@@ -13,7 +13,9 @@ import {
   ArrowLeft,
   MessageSquareIcon,
   ChevronRight,
-  Loader2
+  Loader2,
+  Globe,
+  Phone
 } from "lucide-react";
 import type { Category, Contact } from "@/lib/types";
 
@@ -283,7 +285,23 @@ export default function CreateTemplateCampaignModal({
                     </div>
                   </div>
 
-                  <div className="space-y-6">
+                  {/* Campaign Name & Variables Section */}
+                  <div className="space-y-8">
+                    {/* Campaign Name */}
+                    <div className="space-y-4">
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest block mb-2">
+                        Campaign Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="e.g., Summer Launch 2024"
+                        value={campaignName}
+                        onChange={(e) => setCampaignName(e.target.value)}
+                        className="w-full px-4 py-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
+                      />
+                    </div>
+
+                    {/* Variables */}
                     <div>
                       <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4 flex items-center gap-2">
                         <Zap className="w-4 h-4 text-primary" /> Variables Configuration
@@ -316,69 +334,144 @@ export default function CreateTemplateCampaignModal({
                         )}
                       </div>
                     </div>
+
+                    {/* Recipients Section (Moved here) */}
+                    <div className="space-y-4 pt-4 border-t border-border">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                          Select Recipients <span className="text-red-500">*</span>
+                        </label>
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={handleSelectAllRecipients}
+                            className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors uppercase tracking-wider"
+                          >
+                            {contacts.length > 0 && contacts.every(c => selectedRecipients.has(c.id)) ? 'Deselect All' : 'Select All'}
+                          </button>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary/10 text-primary uppercase">
+                            {selectedRecipients.size} Selected
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <select
+                          value={recipientCategoryId ?? ""}
+                          onChange={(e) => {
+                            setRecipientCategoryId(e.target.value ? Number(e.target.value) : null);
+                            setRecipientSubcategoryId(null);
+                          }}
+                          className="w-full px-3 py-2.5 bg-input border border-border rounded-xl text-xs font-semibold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                        >
+                          <option value="">All Categories</option>
+                          {categories.map((cat) => (
+                            <option key={cat.id} value={cat.id}>{cat.name}</option>
+                          ))}
+                        </select>
+
+                        <select
+                          value={recipientSubcategoryId ?? ""}
+                          disabled={!recipientCategoryId}
+                          onChange={(e) => setRecipientSubcategoryId(e.target.value ? Number(e.target.value) : null)}
+                          className="w-full px-3 py-2.5 bg-input border border-border rounded-xl text-xs font-semibold focus:ring-2 focus:ring-primary/20 outline-none transition-all disabled:opacity-50"
+                        >
+                          <option value="">All Subcategories</option>
+                          {categories
+                            .find((c) => c.id === recipientCategoryId)
+                            ?.subcategories?.map((sub) => (
+                              <option key={sub.id} value={sub.id}>{sub.name}</option>
+                            ))}
+                        </select>
+                      </div>
+
+                      {/* Recipients List */}
+                      <div className="min-h-[250px] border border-border rounded-2xl overflow-hidden bg-input/20 flex flex-col">
+                        <div className="max-h-[300px] overflow-y-auto divide-y divide-border custom-scrollbar">
+                          {loadingContacts ? (
+                            <div className="p-10 text-center opacity-30">
+                              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                              <p className="text-[10px] font-bold uppercase tracking-widest">Searching contacts...</p>
+                            </div>
+                          ) : contacts.length === 0 ? (
+                            <div className="p-10 text-center opacity-30">
+                              <p className="text-[10px] font-bold uppercase tracking-widest">No matching contacts</p>
+                            </div>
+                          ) : (
+                            contacts.map((contact) => (
+                              <div
+                                key={contact.id}
+                                onClick={() => handleToggleRecipient(contact.id)}
+                                className="group flex items-center gap-4 p-4 hover:bg-primary/5 cursor-pointer transition-all"
+                              >
+                                <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${selectedRecipients.has(contact.id) ? 'bg-primary border-primary shadow-lg shadow-primary/30' : 'border-border group-hover:border-primary/50 bg-background'
+                                  }`}>
+                                  {selectedRecipients.has(contact.id) && <Check className="w-3 h-3 text-white" />}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-bold text-foreground truncate">{contact.company_name || contact.mobile_number}</p>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-[10px] font-bold text-muted-foreground uppercase opacity-50 px-1.5 py-0.5 bg-muted rounded">
+                                      {contact.category_name}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-primary truncate">
+                                      {contact.mobile_number}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
             {/* Right Panel: Preview & Recipients */}
-            <div className="w-full lg:w-[450px] overflow-hidden bg-card flex flex-col border-l border-border min-h-0">
-              <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-                {/* Campaign Settings */}
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest block mb-2">
-                      Campaign Name <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="e.g., Summer Launch 2024"
-                      value={campaignName}
-                      onChange={(e) => setCampaignName(e.target.value)}
-                      className="w-full px-4 py-3 bg-input border border-border rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all font-medium"
-                    />
-                  </div>
-                </div>
-
+            <div className="w-full lg:w-[400px] overflow-hidden bg-muted/10 flex flex-col border-l border-border min-h-0 bg-gradient-to-b from-card to-background">
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col items-center justify-center custom-scrollbar">
                 {/* Live Preview Section */}
-                {selectedTemplate && (
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between px-1">
-                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                {selectedTemplate ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center py-4">
+                    <div className="flex items-center justify-center w-full px-1 mb-4">
+                      <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
                         Live Preview
                       </label>
                     </div>
 
-                    {/* Mobile Frame Container */}
-                    <div className="relative mx-auto w-full max-w-[320px] border-[8px] border-[#1F2937] rounded-[40px] overflow-hidden shadow-2xl bg-[#0b141a]">
-                      <div className="h-6 bg-[#0b141a] flex justify-between items-center px-6 pt-2 z-20 relative">
-                        <span className="text-[10px] text-white/40 font-bold">9:41</span>
-                        <div className="flex gap-1.5 opacity-40 italic font-bold text-[10px] text-white">WhatsApp</div>
+                    {/* Mobile Frame Container - Elegantly elongated and responsive */}
+                    <div className="relative mx-auto w-full max-w-[280px] border-[10px] border-[#1F2937] rounded-[48px] shadow-2xl bg-[#0b141a] transition-all duration-500 overflow-hidden transform lg:scale-105">
+                      <div className="h-6 bg-[#0b141a] flex justify-between items-center px-6 pt-3 z-20 relative">
+                        <span className="text-[10px] text-white font-semibold">9:41</span>
+                        <div className="flex gap-1.5 opacity-50 italic font-bold text-[10px] text-white">WhatsApp</div>
                       </div>
 
-                      <div className="relative bg-[#0b141a] p-4 min-h-[300px] flex flex-col">
+                      <div className="relative bg-[#0b141a] p-3 pt-4 min-h-[540px] max-h-[550px] overflow-y-auto custom-scrollbar flex flex-col">
                         <div className="absolute inset-0 opacity-[0.05] bg-[url('https://camo.githubusercontent.com/857a221f7c706d8847f9723ec083b063878b2772591f463378b879a838be8194/68747470733a2f2f757365722d696d616765732e67697468756275736572636f6e74656e742e636f6d2f31353037353735392f32383731393134342d38366463306637302d373362312d346334382d393630332d3935303237396532373635382e706e67')] bg-repeat bg-[length:400px]"></div>
 
-                        <div className="relative z-10 w-full flex flex-col gap-1.5 mt-2 animate-in fade-in zoom-in-95 duration-500">
+                        <div className="relative z-10 w-full flex flex-col gap-1 mt-1 animate-in fade-in zoom-in-95 duration-500">
                           <div className="bg-[#202c33] rounded-2xl rounded-tl-none shadow-lg relative overflow-hidden group border border-white/5">
-                            <div className="p-1.5">
+                            <div className="p-1">
                               {/* Header Media */}
-                              {(selectedTemplate.languages[0]?.headerType === "IMAGE" || selectedTemplate.languages[0]?.headerType === "VIDEO") && (() => {
+                              {(() => {
                                 const mediaItem = selectedTemplate.media?.find(m => m.language === selectedTemplate.languages[0].language);
                                 if (mediaItem?.s3Url) {
                                   return (
-                                    <div className="rounded-xl overflow-hidden bg-black/20 aspect-video relative group">
+                                    <div className="rounded-xl overflow-hidden bg-black/40 min-h-[140px] relative group flex items-center justify-center">
                                       {selectedTemplate.languages[0].headerType === "VIDEO" ? (
-                                        <video src={mediaItem.s3Url} className="w-full h-full object-cover" />
+                                        <video src={mediaItem.s3Url} className="w-full h-full object-contain" />
                                       ) : (
-                                        <img src={mediaItem.s3Url} alt="Header" className="w-full h-full object-cover" />
+                                        <img src={mediaItem.s3Url} alt="Header" className="w-full h-full object-contain" />
                                       )}
-                                      <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-all" />
+                                      <div className="absolute inset-0 bg-black/10 group-hover:bg-transparent transition-all" />
                                     </div>
                                   );
                                 }
                                 return (
-                                  <div className="aspect-video bg-[#2a3942] flex flex-col items-center justify-center rounded-xl text-slate-500 text-[10px] font-bold uppercase tracking-wider border border-white/5">
+                                  <div className="min-h-[140px] bg-[#2a3942] flex flex-col items-center justify-center rounded-xl text-slate-500 text-[10px] font-bold uppercase tracking-wider border border-white/5">
                                     <ImageIcon className="w-6 h-6 mb-2 opacity-30 text-white" />
                                     {selectedTemplate.languages[0].headerType} MEDIA
                                   </div>
@@ -387,13 +480,13 @@ export default function CreateTemplateCampaignModal({
 
                               {/* Header Text */}
                               {selectedTemplate.languages[0]?.headerType === "TEXT" && selectedTemplate.languages[0]?.headerText && (
-                                <p className="font-bold text-[14px] pt-3 px-3 text-[#e9edef] leading-tight">
+                                <p className="font-bold text-[14px] pt-2 px-3 text-[#e9edef] leading-tight">
                                   {selectedTemplate.languages[0].headerText}
                                 </p>
                               )}
                             </div>
 
-                            <div className="px-4 pt-1 pb-4 text-[14px] leading-relaxed text-[#e9edef] whitespace-pre-wrap font-sans">
+                            <div className="px-3 pt-1 pb-3 text-[13px] leading-snug text-[#e9edef] whitespace-pre-wrap font-sans">
                               {(() => {
                                 let body = selectedTemplate.languages[0]?.body || "";
                                 templateVariables.forEach((val, idx) => {
@@ -404,7 +497,7 @@ export default function CreateTemplateCampaignModal({
                               })()}
 
                               {selectedTemplate.languages[0]?.footerText && (
-                                <p className="mt-2 text-[12px] text-[#8696a0] font-medium border-t border-white/5 pt-2">
+                                <p className="mt-1.5 text-[11px] text-[#8696a0] font-medium border-t border-white/5 pt-1.5">
                                   {selectedTemplate.languages[0].footerText}
                                 </p>
                               )}
@@ -412,10 +505,16 @@ export default function CreateTemplateCampaignModal({
 
                             {/* Buttons */}
                             {selectedTemplate.buttons && selectedTemplate.buttons.length > 0 && (
-                              <div className="border-t border-white/10 flex flex-col divide-y divide-white/10 bg-[#2a3942]/50">
+                              <div className="border-t border-white/10 flex flex-col divide-y divide-white/10 bg-[#2a3942]/30">
                                 {selectedTemplate.buttons.map((btn, idx) => (
-                                  <div key={idx} className="p-2.5 text-center text-[14px] font-bold text-[#00a884] flex items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-default">
-                                    <MessageSquareIcon className="w-3.5 h-3.5" />
+                                  <div key={idx} className="p-2.5 text-center text-[13px] font-medium text-[#00a884] flex items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer">
+                                    {btn.type === "URL" ? (
+                                      <Globe className="w-3.5 h-3.5" />
+                                    ) : btn.type === "PHONE_NUMBER" ? (
+                                      <Phone className="w-3.5 h-3.5" />
+                                    ) : (
+                                      <MessageSquareIcon className="w-3.5 h-3.5" />
+                                    )}
                                     {btn.text}
                                   </div>
                                 ))}
@@ -423,102 +522,23 @@ export default function CreateTemplateCampaignModal({
                             )}
                           </div>
 
-                          <div className="self-end mr-1">
-                            <span className="text-[10px] text-white/30 font-bold uppercase">9:41 AM • SENDING</span>
+                          <div className="self-end mr-1 mt-0.5 flex items-center gap-1 opacity-40">
+                            <span className="text-[10px] text-white font-bold uppercase tracking-tighter">9:41 AM</span>
+                            <div className="flex -space-x-1">
+                              <Check className="w-2.5 h-2.5 text-white" />
+                              <Check className="w-2.5 h-2.5 text-white" />
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
                   </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center p-12 opacity-30">
+                    <ImageIcon className="w-16 h-16 mb-4 text-muted-foreground" />
+                    <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">Select a template to view preview</p>
+                  </div>
                 )}
-
-                {/* Recipients Filtering & List */}
-                <div className="space-y-4 flex-1 flex flex-col">
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                      Select Recipients <span className="text-red-500">*</span>
-                    </label>
-                    <button
-                      onClick={handleSelectAllRecipients}
-                      className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors uppercase tracking-wider"
-                    >
-                      {contacts.length > 0 && contacts.every(c => selectedRecipients.has(c.id)) ? 'Deselect All' : 'Select All'}
-                    </button>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-primary/10 text-primary uppercase">
-                      {selectedRecipients.size} Selected
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <select
-                      value={recipientCategoryId ?? ""}
-                      onChange={(e) => {
-                        setRecipientCategoryId(e.target.value ? Number(e.target.value) : null);
-                        setRecipientSubcategoryId(null);
-                      }}
-                      className="w-full px-3 py-2.5 bg-input border border-border rounded-xl text-xs font-semibold focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                    >
-                      <option value="">All Categories</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>{cat.name}</option>
-                      ))}
-                    </select>
-
-                    <select
-                      value={recipientSubcategoryId ?? ""}
-                      disabled={!recipientCategoryId}
-                      onChange={(e) => setRecipientSubcategoryId(e.target.value ? Number(e.target.value) : null)}
-                      className="w-full px-3 py-2.5 bg-input border border-border rounded-xl text-xs font-semibold focus:ring-2 focus:ring-primary/20 outline-none transition-all disabled:opacity-50"
-                    >
-                      <option value="">All Subcategories</option>
-                      {categories
-                        .find((c) => c.id === recipientCategoryId)
-                        ?.subcategories?.map((sub) => (
-                          <option key={sub.id} value={sub.id}>{sub.name}</option>
-                        ))}
-                    </select>
-                  </div>
-
-                  {/* Recipients List */}
-                  <div className="flex-1 min-h-[200px] border border-border rounded-2xl overflow-hidden bg-input/20 flex flex-col">
-                    <div className="flex-1 overflow-y-auto divide-y divide-border">
-                      {loadingContacts ? (
-                        <div className="p-10 text-center opacity-30">
-                          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                          <p className="text-[10px] font-bold uppercase tracking-widest">Searching contacts...</p>
-                        </div>
-                      ) : contacts.length === 0 ? (
-                        <div className="p-10 text-center opacity-30">
-                          <p className="text-[10px] font-bold uppercase tracking-widest">No matching contacts</p>
-                        </div>
-                      ) : (
-                        contacts.map((contact) => (
-                          <div
-                            key={contact.id}
-                            onClick={() => handleToggleRecipient(contact.id)}
-                            className="group flex items-center gap-4 p-4 hover:bg-primary/5 cursor-pointer transition-all"
-                          >
-                            <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${selectedRecipients.has(contact.id) ? 'bg-primary border-primary shadow-lg shadow-primary/30' : 'border-border group-hover:border-primary/50 bg-background'
-                              }`}>
-                              {selectedRecipients.has(contact.id) && <Check className="w-3 h-3 text-white" />}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-bold text-foreground truncate">{contact.company_name || contact.mobile_number}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span className="text-[10px] font-bold text-muted-foreground uppercase opacity-50 px-1.5 py-0.5 bg-muted rounded">
-                                  {contact.category_name}
-                                </span>
-                                <span className="text-[10px] font-bold text-primary truncate">
-                                  {contact.mobile_number}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
