@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import { ImageIcon, X, Zap, Check, Filter } from "lucide-react";
-import type { Category, Contact, GalleryImage } from "@/lib/types";
+import type { Category, WhatsAppRecipient, GalleryImage } from "@/lib/types";
 
 const ImageSkeleton = () => (
   <div className="h-[120px] rounded-lg bg-gradient-to-br from-muted to-secondary animate-pulse" />
@@ -28,7 +28,7 @@ export default function CreateImageCampaignModal({
   const [hasMoreImages, setHasMoreImages] = useState(true);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [contacts, setContacts] = useState<Contact[]>([]);
+  const [contacts, setContacts] = useState<WhatsAppRecipient[]>([]);
   const [images, setImages] = useState<GalleryImage[]>([]);
   const [selectedImages, setSelectedImages] = useState<Set<number>>(new Set());
   const [selectedRecipients, setSelectedRecipients] = useState<Set<number>>(
@@ -61,16 +61,15 @@ export default function CreateImageCampaignModal({
     categoryId?: number | null,
     subcategoryId?: number | null
   ) => {
-    const res = await api.get<{
-      data: { contacts: Contact[] };
-    }>("/categories/contacts", {
+    const res = await api.get("/recipients/session-active", {
       params: {
-        category_id: categoryId ?? undefined,
-        subcategory_id: subcategoryId ?? undefined,
+        categoryId: categoryId ?? undefined,
+        subcategoryId: subcategoryId ?? undefined,
       },
     });
 
-    setContacts(res.data.data.contacts);
+    // IMPORTANT: this returns contacts WITH conversationId
+    setContacts(res.data.data);
   };
 
   useEffect(() => {
@@ -194,20 +193,35 @@ export default function CreateImageCampaignModal({
 
   const handleLaunch = async () => {
     if (!campaignName.trim()) return alert("Campaign name required");
-    if (selectedImages.size === 0) return alert("Select images");
     if (selectedRecipients.size === 0) return alert("Select recipients");
+    if (!selectedCategoryId) return alert("Select image category");
 
     try {
-      await api.post("/gallery/send-bulk", {
-        campaign_name: campaignName,
-        image_ids: Array.from(selectedImages),
-        recipients: Array.from(selectedRecipients),
+      // Convert selected contacts → conversationIds
+      const conversationIds = contacts
+        .filter((c) => selectedRecipients.has(c.id))
+        .map((c) => c.conversationId)
+        .filter(Boolean);
+
+      if (conversationIds.length === 0) {
+        alert("No valid WhatsApp sessions found");
+        return;
+      }
+
+      await api.post("/campaign/image", {
+        name: campaignName,
+        categoryId: selectedCategoryId,
+        subCategoryId: selectedSubcategoryId,
+        captionMode: "TITLE",
+        imageLimit: selectedImages.size,
+        conversationIds,
       });
 
-      alert("Campaign sent 🚀");
+      alert("Campaign created successfully 🚀");
       onClose();
     } catch (err) {
-      alert("Failed to send campaign. Please try again.");
+      console.error(err);
+      alert("Failed to create campaign");
     }
   };
 

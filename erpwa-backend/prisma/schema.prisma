@@ -22,7 +22,6 @@ model Vendor {
   conversations         Conversation[]
   galleryImages         GalleryImage[]
   leads                 Lead[]
-  leadCategories        LeadCategory[]
   mediaAlbums           MediaAlbum[]
   messages              Message[]
   templates             Template[]
@@ -68,52 +67,46 @@ model PasswordResetOtp {
   @@index([userId])
 }
 
-model LeadCategory {
-  id        String         @id @default(uuid())
-  vendorId  String
-  name      String
-  parentId  String?
-  createdAt DateTime       @default(now())
-  parent    LeadCategory?  @relation("LeadCategoryTree", fields: [parentId], references: [id])
-  children  LeadCategory[] @relation("LeadCategoryTree")
-  vendor    Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-}
 
 model Lead {
   id              String         @id @default(uuid())
   vendorId        String
   phoneNumber     String
   status          String         @default("new")
+
   whatsappOptIn   Boolean        @default(true)
   optInSource     String?
   optInMessage    String?
   optInAt         DateTime?
   blockedAt       DateTime?
   lastContactedAt DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  deletedAt       DateTime?
-  category        String         @default("standard")
+
   city            String?
   companyName     String?
   email           String?
-  subcategory     String?
-  categoryId      Int?
   salesPersonName String?
+
+  categoryId      Int?
   subCategoryId   Int?
+
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  deletedAt       DateTime?
+
   conversations   Conversation[]
-  leadCategory    Category?      @relation("LeadCategory", fields: [categoryId], references: [id])
-  leadSubCategory Category?      @relation("LeadSubCategory", fields: [subCategoryId], references: [id])
-  vendor          Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+
+  leadCategory    Category? @relation("LeadCategory", fields: [categoryId], references: [id])
+  leadSubCategory Category? @relation("LeadSubCategory", fields: [subCategoryId], references: [id])
+
+  vendor          Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
 
   @@unique([vendorId, phoneNumber])
   @@index([email])
-  @@index([category])
-  @@index([subcategory])
   @@index([categoryId])
   @@index([subCategoryId])
   @@index([status])
 }
+
 
 model Category {
   id             Int            @id @default(autoincrement())
@@ -122,20 +115,30 @@ model Category {
   parentId       Int?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
+
+  // Self relation (tree)
   parent         Category?      @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Cascade)
   children       Category[]     @relation("CategoryTree")
+
   vendor         Vendor         @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  contacts       Contact[]      @relation("ContactCategory")
-  contactSubcats Contact[]      @relation("ContactSubCategory")
-  galleryImages  GalleryImage[] @relation("GalleryCategory")
-  gallerySubcats GalleryImage[] @relation("GallerySubCategory")
+
+  // Leads
   leads          Lead[]         @relation("LeadCategory")
   leadSubcats    Lead[]         @relation("LeadSubCategory")
+
+  // Contacts
+  contacts       Contact[]      @relation("ContactCategory")
+  contactSubcats Contact[]      @relation("ContactSubCategory")
+
+  // Gallery
+  galleryImages  GalleryImage[] @relation("GalleryCategory")
+  gallerySubcats GalleryImage[] @relation("GallerySubCategory")
 
   @@unique([vendorId, name, parentId])
   @@index([vendorId])
   @@index([parentId])
 }
+
 
 model Contact {
   id              Int       @id @default(autoincrement())
