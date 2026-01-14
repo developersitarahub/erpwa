@@ -6,8 +6,7 @@ import { Card } from "@/components/card"
 import { Button } from "@/components/button"
 import { Badge } from "@/components/badge"
 import { Input } from "@/components/input"
-import { Select } from "@/components/select"
-import { Plus, Edit2, Trash2, CheckCircle2, Circle, X, Loader2, Ban } from "lucide-react"
+import { Plus, Edit2, Trash2, Circle, X, Loader2, Ban, Search, ChevronLeft, ChevronRight } from "lucide-react"
 import { useAuth } from "@/context/authContext"
 import { usersAPI, User } from "@/lib/usersApi"
 import { toast } from "react-toastify"
@@ -23,6 +22,12 @@ export default function ManageTeam() {
 
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Search, Filter, Pagination state
+  const [searchQuery, setSearchQuery] = useState("")
+  const [roleFilter, setRoleFilter] = useState<"all" | "sales" | "admin">("all")
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   // Form State
   const [formData, setFormData] = useState({
@@ -41,8 +46,6 @@ export default function ManageTeam() {
     fetchUsers()
   }, [])
 
-
-
   const fetchUsers = async () => {
     try {
       const res = await usersAPI.list()
@@ -57,7 +60,7 @@ export default function ManageTeam() {
     }
   }
 
-  // 🔌 Real-time Presence Listener
+  // 🔌 Real-time Presence & User Events Listener
   useEffect(() => {
     const socket = getSocket()
 
@@ -81,14 +84,54 @@ export default function ManageTeam() {
       toast.success("🎉 A team member just activated their account!")
     }
 
+    // 🆕 Handle new user creation in real-time
+    const handleUserCreated = (newUser: User) => {
+      setTeam(prevTeam => {
+        // Check if user already exists to avoid duplicates
+        if (prevTeam.some(u => u.id === newUser.id)) return prevTeam
+        return [newUser, ...prevTeam]
+      })
+      toast.success(`👤 New team member added: ${newUser.name}`)
+    }
+
     socket.on("user:presence", handlePresence)
     socket.on("user:activated", handleActivated)
+    socket.on("user:created", handleUserCreated)
 
     return () => {
       socket.off("user:presence", handlePresence)
       socket.off("user:activated", handleActivated)
+      socket.off("user:created", handleUserCreated)
     }
   }, [])
+
+  // Filter and paginate team members
+  const filteredTeam = team.filter(member => {
+    // Search filter
+    const matchesSearch =
+      member.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      member.email.toLowerCase().includes(searchQuery.toLowerCase())
+
+    // Role filter
+    let matchesRole = true
+    if (roleFilter === "sales") {
+      matchesRole = member.role === "sales"
+    } else if (roleFilter === "admin") {
+      matchesRole = member.role === "vendor_admin" || member.role === "vendor_owner"
+    }
+
+    return matchesSearch && matchesRole
+  })
+
+  // Pagination calculations
+  const totalPages = Math.max(1, Math.ceil(filteredTeam.length / itemsPerPage))
+  const startIndex = (currentPage - 1) * itemsPerPage
+  const paginatedTeam = filteredTeam.slice(startIndex, startIndex + itemsPerPage)
+
+  // Reset to page 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, roleFilter, itemsPerPage])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -144,13 +187,16 @@ export default function ManageTeam() {
         // Only send name for update
         await usersAPI.update(editingId, { name: formData.name })
         toast.success("Name updated successfully")
+        // Update local state
+        setTeam(prev => prev.map(m => m.id === editingId ? { ...m, name: formData.name } : m))
       } else {
         // Create user without password - backend will send invite
         await usersAPI.create(formData)
         toast.success("📧 Invitation email sent with setup instructions!")
+        // Refetch users to get the new user (since we removed socket emit from backend)
+        fetchUsers()
       }
       setIsModalOpen(false)
-      fetchUsers()
     } catch (error: any) {
       console.error("Save user error", error)
       toast.error(error.response?.data?.message || "Failed to save user")
@@ -191,7 +237,7 @@ export default function ManageTeam() {
               try {
                 await usersAPI.delete(id)
                 toast.success("✅ Team member removed successfully")
-                fetchUsers()
+                setTeam(prev => prev.filter(m => m.id !== id))
               } catch (error) {
                 toast.error("❌ Failed to delete user")
               }
@@ -211,8 +257,6 @@ export default function ManageTeam() {
     })
   }
 
-
-
   const userRole = user?.role
 
   // Loading state
@@ -230,20 +274,57 @@ export default function ManageTeam() {
   return (
     <div className="flex-1 overflow-auto">
       <div className="p-4 md:p-8 space-y-6 md:space-y-8 bg-background">
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Manage Team</h1>
-          <p className="text-sm text-muted-foreground mt-2">View and manage sales team members</p>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">Manage Team</h1>
+            <p className="text-sm text-muted-foreground mt-2">View and manage sales team members</p>
+          </div>
+          <Button size="md" className="w-full sm:w-auto" onClick={openAddModal}>
+            <Plus className="w-5 h-5 mr-2" />
+            Add Member
+          </Button>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
           <Card className="bg-card border-border">
             <div className="p-4 md:p-6 border-b border-border">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <h3 className="text-base md:text-lg font-semibold text-foreground">Team Members ({team.length})</h3>
-                <Button size="sm" className="w-full sm:w-auto" onClick={openAddModal}>
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add Member
-                </Button>
+              <div className="flex flex-col gap-4">
+                {/* Header Row */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-base md:text-lg font-semibold text-foreground">Team Members ({team.length})</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Showing: <span className="font-semibold text-primary">{paginatedTeam.length}</span> of{" "}
+                      <span className="font-semibold text-primary">{filteredTeam.length}</span>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Search and Filter Bar */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  {/* Search */}
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search by name or email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-secondary border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
+                    />
+                  </div>
+
+                  {/* Role Filter */}
+                  <select
+                    value={roleFilter}
+                    onChange={(e) => setRoleFilter(e.target.value as "all" | "sales" | "admin")}
+                    className="px-4 py-2 bg-secondary border border-border rounded-lg text-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm min-w-[140px]"
+                  >
+                    <option value="all">All Roles</option>
+                    <option value="sales">Sales Only</option>
+                    <option value="admin">Admins Only</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -261,16 +342,16 @@ export default function ManageTeam() {
                   </tr>
                 </thead>
                 <tbody>
-                  {loading ? (
+                  {paginatedTeam.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-muted-foreground">Loading team...</td>
-                    </tr>
-                  ) : team.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="text-center py-8 text-muted-foreground">No team members found. Add one to get started.</td>
+                      <td colSpan={7} className="text-center py-8 text-muted-foreground">
+                        {searchQuery || roleFilter !== "all"
+                          ? "No team members match your filters."
+                          : "No team members found. Add one to get started."}
+                      </td>
                     </tr>
                   ) : (
-                    team.map((member, index) => (
+                    paginatedTeam.map((member, index) => (
                       <motion.tr
                         key={member.id}
                         initial={{ opacity: 0, y: 10 }}
@@ -350,6 +431,91 @@ export default function ManageTeam() {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination */}
+            {filteredTeam.length > 0 && (
+              <div className="flex flex-col sm:flex-row justify-center items-center gap-3 p-4 md:p-6 border-t border-border">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="bg-secondary border-border text-foreground hover:bg-muted transition-all duration-200 font-semibold"
+                >
+                  <ChevronLeft className="w-4 h-4 mr-1" /> Previous
+                </Button>
+
+                {/* Page Numbers */}
+                <div className="flex gap-2">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter((page) => {
+                      if (totalPages <= 7) return true
+                      if (page === 1 || page === totalPages) return true
+                      if (page >= currentPage - 1 && page <= currentPage + 1) return true
+                      return false
+                    })
+                    .map((page, idx, arr) => {
+                      if (idx > 0 && arr[idx - 1] + 1 < page) {
+                        return (
+                          <span key={`dots-${page}`} className="px-3 text-muted-foreground font-semibold">
+                            ...
+                          </span>
+                        )
+                      }
+                      return (
+                        <Button
+                          key={page}
+                          size="sm"
+                          onClick={() => setCurrentPage(page)}
+                          variant={page === currentPage ? "primary" : "outline"}
+                          className={`transition-all duration-200 font-semibold min-w-10 ${page === currentPage
+                            ? "bg-primary hover:bg-primary/90 text-white shadow-lg"
+                            : "bg-secondary border-border text-foreground hover:bg-muted/70"
+                            }`}
+                        >
+                          {page}
+                        </Button>
+                      )
+                    })}
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="bg-secondary border-border text-foreground hover:bg-muted transition-all duration-200 font-semibold"
+                >
+                  Next <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+
+                {/* Page Info */}
+                <div className="text-center sm:ml-4 sm:pl-4 sm:border-l border-border flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+                  <p className="text-sm font-semibold text-foreground">
+                    Page <span className="text-primary">{currentPage}</span> of{" "}
+                    <span className="text-primary">{totalPages}</span>
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Rows per page:</span>
+                    <select
+                      className="px-2 py-1 bg-secondary border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(Number(e.target.value))
+                        setCurrentPage(1)
+                      }}
+                    >
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={30}>30</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            )}
           </Card>
         </motion.div>
       </div>
@@ -402,7 +568,7 @@ export default function ManageTeam() {
                       value={formData.role}
                       onChange={handleInputChange}
                       disabled={userRole === "vendor_admin"}
-                      className="w-full flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-100"
+                      className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-100"
                     >
                       <option value="sales">Sales Executive</option>
                       {/* Only Owners can create Admins */}
@@ -411,8 +577,6 @@ export default function ManageTeam() {
                       )}
                     </select>
                   </div>
-
-
                 </>
               )}
 

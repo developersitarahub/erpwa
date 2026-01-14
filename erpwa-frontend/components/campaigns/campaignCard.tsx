@@ -43,6 +43,12 @@ export default function CampaignCard({
   const progress = total > 0 ? ((sent + failed) / total) * 100 : 0;
   const successRate = total > 0 ? (sent / total) * 100 : 0;
 
+  // Derive display status: if completed but all failed, show as "failed"
+  const displayStatus: Campaign["status"] =
+    campaign.status === "completed" && sent === 0 && failed > 0
+      ? "failed"
+      : campaign.status;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -68,15 +74,15 @@ export default function CampaignCard({
               </div>
             </div>
             <Badge
-              className={`text-xs capitalize ${statusColors[campaign.status]}`}
+              className={`text-xs capitalize ${statusColors[displayStatus]}`}
             >
-              {campaign.status}
+              {displayStatus}
             </Badge>
           </div>
 
           {/* Progress Bar Section - Fixed height container */}
           <div className="min-h-[80px] flex items-center">
-            {total > 0 && (campaign.status === "active" || campaign.status === "completed" || campaign.status === "pending") ? (
+            {total > 0 && (displayStatus === "active" || displayStatus === "completed" || displayStatus === "pending" || displayStatus === "failed") ? (
               <div className="space-y-2 w-full">
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>Progress</span>
@@ -87,11 +93,13 @@ export default function CampaignCard({
                     initial={{ width: 0 }}
                     animate={{ width: `${progress}%` }}
                     transition={{ duration: 0.5, ease: "easeOut" }}
-                    className={`h-full ${campaign.status === "completed"
-                      ? "bg-blue-500"
-                      : campaign.status === "pending"
-                        ? "bg-orange-500"
-                        : "bg-green-500"
+                    className={`h-full ${displayStatus === "failed"
+                      ? "bg-red-500"
+                      : displayStatus === "completed"
+                        ? "bg-blue-500"
+                        : displayStatus === "pending"
+                          ? "bg-orange-500"
+                          : "bg-green-500"
                       }`}
                   />
                 </div>
