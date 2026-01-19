@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.routes.js";
 import vendorWhatsappRoutes from "./routes/vendorWhatsapp.route.js";
 import vendorWhatsappMessageRoutes from "./routes/vendorWhatsappMessage.route.js";
 import whatsappWebhookRoutes from "./routes/whatsappWebhook.route.js";
+import whatsappTestRoutes from "./routes/whatsappTest.route.js";
 import vendorTemplateRoutes from "./routes/vendorTemplate.route.js";
 import vendorWhatsappTemplateSendRoutes from "./routes/vendorWhatsappTemplateSend.route.js";
 import inboxRoutes from "./routes/inbox.route.js";
@@ -48,6 +49,7 @@ app.get("/ping", (req, res) => res.send("pong"));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/whatsapp-test", whatsappTestRoutes);
 app.use("/api/vendor", vendorWhatsappRoutes);
 app.use("/api/vendor/whatsapp", vendorWhatsappMessageRoutes);
 app.use("/api/vendor/templates", vendorTemplateRoutes);

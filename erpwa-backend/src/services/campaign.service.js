@@ -2,21 +2,11 @@ import prisma from "../prisma.js";
 
 class CampaignService {
   static async createTemplateCampaign(vendorId, payload) {
-    const {
-      name,
-      templateId,
-      language,
-      conversationIds,
-      scheduledAt,
-      recipients,
-      bodyVariables,
-      variableModes,
-    } = payload;
+    const { name, templateId, language, conversationIds, scheduledAt, recipients, bodyVariables, variableModes } =
+      payload;
 
     if (!templateId || (!conversationIds?.length && !recipients?.length)) {
-      throw new Error(
-        "Template and either conversations or recipients are required",
-      );
+      throw new Error("Template and either conversations or recipients are required");
     }
 
     // 1️⃣ Validate template
@@ -49,7 +39,7 @@ class CampaignService {
       for (const phone of recipients) {
         if (!phone) continue;
         const cleanPhone = String(phone).replace(/\D/g, "");
-
+        
         // Upsert Lead
         // Note: We don't have name/email here, just phone.
         const lead = await prisma.lead.upsert({
@@ -59,7 +49,7 @@ class CampaignService {
               phoneNumber: cleanPhone,
             },
           },
-          update: {},
+          update: {}, 
           create: {
             vendorId,
             phoneNumber: cleanPhone,
@@ -90,7 +80,7 @@ class CampaignService {
         });
 
         // Avoid duplicates if also passed in conversationIds
-        if (!validConversations.find((c) => c.id === conv.id)) {
+        if (!validConversations.find(c => c.id === conv.id)) {
           validConversations.push(conv);
         }
       }
@@ -118,13 +108,13 @@ class CampaignService {
     for (const conv of validConversations) {
       // Compute per-recipient body variables
       let recipientBodyVariables = bodyVariables;
-
+      
       // If variableModes is provided, substitute company names where needed
       if (variableModes && variableModes.length > 0) {
         recipientBodyVariables = bodyVariables.map((val, idx) => {
-          if (variableModes[idx] === "company") {
+          if (variableModes[idx] === 'company') {
             // Use company name, fallback to phone number if not available
-            return conv.lead.companyName || conv.lead.phoneNumber || "Customer";
+            return conv.lead.companyName || conv.lead.phoneNumber || 'Customer';
           }
           return val;
         });
@@ -146,7 +136,7 @@ class CampaignService {
               bodyVariables: recipientBodyVariables,
             },
           },
-        }),
+        })
       );
     }
 
@@ -347,20 +337,12 @@ class CampaignService {
         });
 
         // Calculate totals from actual database
-        const totalMessages = messageStats.reduce(
-          (sum, stat) => sum + stat._count.id,
-          0,
-        );
+        const totalMessages = messageStats.reduce((sum, stat) => sum + stat._count.id, 0);
         const sentMessages = messageStats
-          .filter(
-            (stat) =>
-              stat.status === "sent" ||
-              stat.status === "delivered" ||
-              stat.status === "read",
-          )
+          .filter(stat => stat.status === "sent" || stat.status === "delivered" || stat.status === "read")
           .reduce((sum, stat) => sum + stat._count.id, 0);
         const failedMessages = messageStats
-          .filter((stat) => stat.status === "failed")
+          .filter(stat => stat.status === "failed")
           .reduce((sum, stat) => sum + stat._count.id, 0);
 
         // Determine actual status based on real message completion
@@ -388,12 +370,12 @@ class CampaignService {
         return {
           ...c,
           recipientCount: recipients.length,
-          totalMessages, // Use computed value
-          sentMessages, // Use computed value
-          failedMessages, // Use computed value
+          totalMessages,      // Use computed value
+          sentMessages,       // Use computed value
+          failedMessages,     // Use computed value
           status: actualStatus,
         };
-      }),
+      })
     );
 
     // Sort by status priority: Active > Pending > Draft > Completed

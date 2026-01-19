@@ -213,6 +213,11 @@ export default function CreateImageCampaignModal({
     if (selectedRecipients.size === 0) return alert("Select recipients");
     if (!selectedCategoryId) return alert("Select image category");
 
+    // Explicit check for selected images
+    if (selectedImages.size === 0) {
+      return alert("Please select at least one image to send");
+    }
+
     setIsLaunching(true);
 
     try {
@@ -227,12 +232,24 @@ export default function CreateImageCampaignModal({
         return;
       }
 
+      const imageIdsArray = Array.from(selectedImages);
+      console.log("🖼️ Selected Images:", selectedImages);
+      console.log("📤 Sending imageIds:", imageIdsArray);
+      console.log("📊 Payload:", {
+        name: campaignName,
+        categoryId: selectedCategoryId,
+        subCategoryId: selectedSubcategoryId,
+        captionMode: "TITLE",
+        imageIds: imageIdsArray,
+        conversationIds,
+      });
+
       await api.post("/campaign/image", {
         name: campaignName,
         categoryId: selectedCategoryId,
         subCategoryId: selectedSubcategoryId,
         captionMode: "TITLE",
-        imageIds: Array.from(selectedImages), // Send actual image IDs
+        imageIds: imageIdsArray, // Send actual image IDs
         conversationIds,
       });
 

@@ -43,7 +43,25 @@ router.get(
       },
     });
 
-    res.json(conversations);
+    // ✅ Calculate unread count for each conversation
+    const conversationsWithUnread = await Promise.all(
+      conversations.map(async (conv) => {
+        const unreadCount = await prisma.message.count({
+          where: {
+            conversationId: conv.id,
+            direction: "inbound",
+            status: { not: "read" },
+          },
+        });
+
+        return {
+          ...conv,
+          unreadCount,
+        };
+      })
+    );
+
+    res.json(conversationsWithUnread);
   })
 );
 
