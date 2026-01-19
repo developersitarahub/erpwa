@@ -55,7 +55,7 @@ router.post("/", async (req, res) => {
 
         // ✅ 24 hour window from LAST inbound message
         const sessionExpiresAt = new Date(
-          inboundAt.getTime() + 24 * 60 * 60 * 1000,
+          inboundAt.getTime() + 24 * 60 * 60 * 1000
         );
 
         const whatsappMessageId = msg.id;
@@ -153,7 +153,7 @@ router.post("/", async (req, res) => {
 
             const { buffer, mimeType, fileName } = await downloadWhatsappMedia(
               mediaId,
-              accessToken,
+              accessToken
             );
 
             const extension =
@@ -243,8 +243,8 @@ router.post("/", async (req, res) => {
               waState === "read"
                 ? "read"
                 : waState === "delivered"
-                  ? "delivered"
-                  : "failed",
+                ? "delivered"
+                : "failed",
             errorCode: waStatus.errors?.[0]?.code?.toString() || null,
           },
         });
@@ -253,7 +253,7 @@ router.post("/", async (req, res) => {
 
         const message = await prisma.message.findFirst({
           where: { whatsappMessageId },
-          select: { conversationId: true, vendorId: true },
+          select: { conversationId: true },
         });
 
         if (!message) continue;
@@ -264,7 +264,7 @@ router.post("/", async (req, res) => {
           data: { lastMessageAt: new Date() },
         });
 
-        // 🔥 Realtime status update to UI (Chat Area)
+        // 🔥 Realtime status update to UI
         try {
           const io = getIO();
           io.to(`conversation:${message.conversationId}`).emit(
@@ -272,13 +272,8 @@ router.post("/", async (req, res) => {
             {
               whatsappMessageId,
               status: waState,
-            },
+            }
           );
-
-          // ✅ ALSO update the Inbox List (sidebar ticks)
-          io.to(`vendor:${message.vendorId}`).emit("inbox:update", {
-            conversationId: message.conversationId,
-          });
         } catch {}
       }
     }

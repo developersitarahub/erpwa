@@ -10,10 +10,10 @@ import authRoutes from "./routes/auth.routes.js";
 import vendorWhatsappRoutes from "./routes/vendorWhatsapp.route.js";
 import vendorWhatsappMessageRoutes from "./routes/vendorWhatsappMessage.route.js";
 import whatsappWebhookRoutes from "./routes/whatsappWebhook.route.js";
+import whatsappTestRoutes from "./routes/whatsappTest.route.js";
 import vendorTemplateRoutes from "./routes/vendorTemplate.route.js";
 import vendorWhatsappTemplateSendRoutes from "./routes/vendorWhatsappTemplateSend.route.js";
 import inboxRoutes from "./routes/inbox.route.js";
-import whatsappNumberCheckRoutes from "./routes/whatsappNumberCheck.route.js";
 import categoryRoutes from "./routes/category.routes.js";
 import leadRoutes from "./routes/lead.routes.js";
 import leadManagementRoutes from "./routes/leadManagement.routes.js";
@@ -39,7 +39,7 @@ app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
-  }),
+  })
 );
 
 app.set("etag", false);
@@ -49,12 +49,12 @@ app.get("/ping", (req, res) => res.send("pong"));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/whatsapp-test", whatsappTestRoutes);
 app.use("/api/vendor", vendorWhatsappRoutes);
 app.use("/api/vendor/whatsapp", vendorWhatsappMessageRoutes);
 app.use("/api/vendor/templates", vendorTemplateRoutes);
 app.use("/api/vendor/whatsapp/template", vendorWhatsappTemplateSendRoutes);
 app.use("/api/inbox", inboxRoutes);
-app.use("/api/whatsapp", whatsappNumberCheckRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/leads-management", leadManagementRoutes);

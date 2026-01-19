@@ -231,7 +231,7 @@ export default function CreateImageCampaignModal({
         name: campaignName,
         categoryId: selectedCategoryId,
         subCategoryId: selectedSubcategoryId,
-        captionMode: "DESCRIPTION",
+        captionMode: "TITLE",
         imageLimit: selectedImages.size,
         conversationIds,
       });
