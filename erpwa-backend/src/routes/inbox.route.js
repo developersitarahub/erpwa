@@ -43,26 +43,33 @@ router.get(
       },
     });
 
-    // ✅ Calculate unread count for each conversation
-    const conversationsWithUnread = await Promise.all(
-      conversations.map(async (conv) => {
-        const unreadCount = await prisma.message.count({
-          where: {
-            conversationId: conv.id,
-            direction: "inbound",
-            status: { not: "read" },
-          },
-        });
+    // ✅ OPTIMIZED: Fetch ALL unread counts in ONE query instead of N queries
+    // This fixes the 8+ second load time by avoiding the N+1 problem
+    const unreadCounts = await prisma.message.groupBy({
+      by: ["conversationId"],
+      where: {
+        conversationId: { in: conversations.map((c) => c.id) },
+        direction: "inbound",
+        status: { not: "read" },
+      },
+      _count: {
+        id: true,
+      },
+    });
 
-        return {
-          ...conv,
-          unreadCount,
-        };
-      })
+    // Create a lookup map for O(1) access
+    const unreadMap = new Map(
+      unreadCounts.map((item) => [item.conversationId, item._count.id]),
     );
 
+    // Attach unread counts without additional queries
+    const conversationsWithUnread = conversations.map((conv) => ({
+      ...conv,
+      unreadCount: unreadMap.get(conv.id) || 0,
+    }));
+
     res.json(conversationsWithUnread);
-  })
+  }),
 );
 
 /**
@@ -124,7 +131,7 @@ router.get(
       sessionExpiresAt: conversation.sessionExpiresAt,
       messages: conversation.messages,
     });
-  })
+  }),
 );
 
 /**
@@ -158,7 +165,7 @@ router.post(
 
     console.log(
       "📦 Conversation query result:",
-      conversation ? "FOUND" : "NOT FOUND"
+      conversation ? "FOUND" : "NOT FOUND",
     );
 
     if (!conversation || !conversation.vendor) {
@@ -170,11 +177,11 @@ router.post(
     console.log("✅ Conversation + vendor OK");
     console.log(
       "vendor.whatsappPhoneNumberId:",
-      conversation.vendor.whatsappPhoneNumberId
+      conversation.vendor.whatsappPhoneNumberId,
     );
 
     console.log(
-      "🔍 Fetching latest inbound message (NOT trusting DB read state)"
+      "🔍 Fetching latest inbound message (NOT trusting DB read state)",
     );
 
     console.log("🔍 Fetching latest inbound message (ignoring DB read state)");
@@ -205,7 +212,7 @@ router.post(
       console.log("📡 Sending WhatsApp READ receipt");
       console.log(
         "POST URL:",
-        `https://graph.facebook.com/v24.0/${conversation.vendor.whatsappPhoneNumberId}/messages`
+        `https://graph.facebook.com/v24.0/${conversation.vendor.whatsappPhoneNumberId}/messages`,
       );
 
       const payload = {
@@ -225,7 +232,7 @@ router.post(
             "Content-Type": "application/json",
           },
           body: JSON.stringify(payload),
-        }
+        },
       );
 
       const waText = await waRes.text();
@@ -237,7 +244,7 @@ router.post(
         console.error("❌ WhatsApp READ FAILED");
       } else {
         console.log(
-          "✅ WhatsApp READ receipt SENT — waiting for webhook confirmation"
+          "✅ WhatsApp READ receipt SENT — waiting for webhook confirmation",
         );
       }
     } catch (err) {
@@ -249,7 +256,7 @@ router.post(
 
     console.log("========== MARK READ END ==========\n");
     return res.sendStatus(200);
-  })
+  }),
 );
 
 export default router;

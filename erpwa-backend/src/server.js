@@ -13,6 +13,7 @@ import whatsappTestRoutes from "./routes/whatsappTest.route.js";
 import vendorTemplateRoutes from "./routes/vendorTemplate.route.js";
 import vendorWhatsappTemplateSendRoutes from "./routes/vendorWhatsappTemplateSend.route.js";
 import inboxRoutes from "./routes/inbox.route.js";
+import whatsappNumberCheckRoutes from "./routes/whatsappNumberCheck.route.js";
 import categoryRoutes from "./routes/category.routes.js";
 import leadRoutes from "./routes/lead.routes.js";
 import leadManagementRoutes from "./routes/leadManagement.routes.js";
@@ -38,7 +39,7 @@ app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
-  })
+  }),
 );
 
 app.set("etag", false);
@@ -54,6 +55,7 @@ app.use("/api/vendor/whatsapp", vendorWhatsappMessageRoutes);
 app.use("/api/vendor/templates", vendorTemplateRoutes);
 app.use("/api/vendor/whatsapp/template", vendorWhatsappTemplateSendRoutes);
 app.use("/api/inbox", inboxRoutes);
+app.use("/api/whatsapp", whatsappNumberCheckRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/leads", leadRoutes);
 app.use("/api/leads-management", leadManagementRoutes);
