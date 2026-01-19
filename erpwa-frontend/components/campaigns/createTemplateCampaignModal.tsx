@@ -59,6 +59,7 @@ export default function CreateTemplateCampaignModal({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
   const [templateVariables, setTemplateVariables] = useState<string[]>([]);
+  const [variableModes, setVariableModes] = useState<('custom' | 'company')[]>([]);
   const [templateSearch, setTemplateSearch] = useState("");
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -121,6 +122,7 @@ export default function CreateTemplateCampaignModal({
       setCampaignName("");
       setSelectedTemplate(null);
       setTemplateVariables([]);
+      setVariableModes([]);
       setTemplateSearch("");
       setSelectedRecipients(new Set());
       setRecipientCategoryId(null);
@@ -155,16 +157,18 @@ export default function CreateTemplateCampaignModal({
 
     try {
       const payload = {
+        name: campaignName,
         templateId: selectedTemplate.id,
+        language: selectedTemplate.languages[0].language, 
         recipients: Array.from(selectedRecipients).map(id => {
           const contact = contacts.find(c => c.id === id);
           return contact?.mobile_number;
         }).filter(Boolean),
         bodyVariables: templateVariables,
-        campaign_name: campaignName,
+        variableModes: variableModes,
       };
 
-      await api.post("/vendor/whatsapp/template/send-template", payload);
+      await api.post("/campaign/template", payload);
 
       onSuccess?.();
       onClose();
@@ -249,9 +253,10 @@ export default function CreateTemplateCampaignModal({
                             onClick={() => {
                               setSelectedTemplate(t);
                               const body = t.languages[0]?.body || "";
-                              const match = body.match(/{{\d+}}/g);
+                              const match = body.match(/\{\{\d+\}\}/g);
                               const count = match ? new Set(match).size : 0;
                               setTemplateVariables(new Array(count).fill(""));
+                              setVariableModes(new Array(count).fill('custom'));
                             }}
                             className="w-full text-left p-4 rounded-xl border border-border hover:border-primary/50 hover:bg-primary/5 transition-all group relative overflow-hidden bg-card shadow-sm hover:shadow-md"
                           >
@@ -321,20 +326,59 @@ export default function CreateTemplateCampaignModal({
                         ) : (
                           templateVariables.map((val, idx) => (
                             <div key={idx} className="space-y-2">
-                              <label className="text-[11px] font-bold text-muted-foreground uppercase flex items-center justify-between">
-                                Variable {"\u007B\u007B"}{idx + 1}{"\u007D\u007D"}
-                                <span className="text-[10px] font-normal lowercase opacity-50 italic">e.g., Customer Name</span>
-                              </label>
+                              <div className="flex items-center justify-between">
+                                <label className="text-[11px] font-bold text-muted-foreground uppercase">
+                                  Variable {"\u007B\u007B"}{idx + 1}{"\u007D\u007D"}
+                                </label>
+                                <div className="flex gap-1 bg-muted rounded-lg p-0.5">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newModes = [...variableModes];
+                                      newModes[idx] = 'custom';
+                                      setVariableModes(newModes);
+                                    }}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                      variableModes[idx] === 'custom'
+                                        ? 'bg-white dark:bg-card text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                  >
+                                    Custom
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const newModes = [...variableModes];
+                                      newModes[idx] = 'company';
+                                      setVariableModes(newModes);
+                                      const newVars = [...templateVariables];
+                                      newVars[idx] = '';
+                                      setTemplateVariables(newVars);
+                                    }}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                      variableModes[idx] === 'company'
+                                        ? 'bg-white dark:bg-card text-foreground shadow-sm'
+                                        : 'text-muted-foreground hover:text-foreground'
+                                    }`}
+                                  >
+                                    Company
+                                  </button>
+                                </div>
+                              </div>
                               <input
                                 type="text"
-                                placeholder={`Value for {{${idx + 1}}}`}
-                                value={val}
+                                disabled={variableModes[idx] === 'company'}
+                                placeholder={variableModes[idx] === 'company' ? 'Will use company name for each recipient' : `Value for {{${idx + 1}}}`}
+                                value={variableModes[idx] === 'company' ? 'Company Name' : val}
                                 onChange={(e) => {
                                   const newVars = [...templateVariables];
                                   newVars[idx] = e.target.value;
                                   setTemplateVariables(newVars);
                                 }}
-                                className="w-full bg-input border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:opacity-30"
+                                className={`w-full bg-input border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:opacity-30 ${
+                                  variableModes[idx] === 'company' ? 'opacity-60 cursor-not-allowed' : ''
+                                }`}
                               />
                             </div>
                           ))

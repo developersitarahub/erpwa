@@ -2,11 +2,11 @@ import prisma from "../prisma.js";
 
 class CampaignService {
   static async createTemplateCampaign(vendorId, payload) {
-    const { name, templateId, language, conversationIds, scheduledAt } =
+    const { name, templateId, language, conversationIds, scheduledAt, recipients, bodyVariables, variableModes } =
       payload;
 
-    if (!templateId || !conversationIds?.length) {
-      throw new Error("Template and conversations are required");
+    if (!templateId || (!conversationIds?.length && !recipients?.length)) {
+      throw new Error("Template and either conversations or recipients are required");
     }
 
     // 1️⃣ Validate template
@@ -18,21 +18,76 @@ class CampaignService {
       throw new Error("Approved template not found");
     }
 
-    // 2️⃣ Validate conversations + leads
-    const conversations = await prisma.conversation.findMany({
-      where: {
-        id: { in: conversationIds },
-        vendorId,
-        lead: {
-          whatsappOptIn: true,
-          blockedAt: null,
-        },
-      },
-      include: { lead: true },
-    });
+    // 2️⃣ Process Recipients (Find/Create Conversations)
+    const validConversations = [];
 
-    if (!conversations.length) {
-      throw new Error("No valid conversations found");
+    // Prioritize passed conversationIds if any (for session-based targeting)
+    if (conversationIds?.length) {
+      const existing = await prisma.conversation.findMany({
+        where: {
+          id: { in: conversationIds },
+          vendorId,
+          lead: { blockedAt: null }, // Removed strict opt-in check to allow re-engagement if needed, or keep it strict? Sticking to strict for safety.
+        },
+        include: { lead: true },
+      });
+      validConversations.push(...existing);
+    }
+
+    // Process raw phone numbers (for marketing outreach)
+    if (recipients?.length) {
+      for (const phone of recipients) {
+        if (!phone) continue;
+        const cleanPhone = String(phone).replace(/\D/g, "");
+        
+        // Upsert Lead
+        // Note: We don't have name/email here, just phone.
+        const lead = await prisma.lead.upsert({
+          where: {
+            vendorId_phoneNumber: {
+              vendorId,
+              phoneNumber: cleanPhone,
+            },
+          },
+          update: {}, 
+          create: {
+            vendorId,
+            phoneNumber: cleanPhone,
+            whatsappOptIn: true,
+            optInSource: "outbound_campaign",
+            status: "new",
+          },
+        });
+
+        if (lead.blockedAt) continue;
+
+        // Upsert Conversation
+        const conv = await prisma.conversation.upsert({
+          where: {
+            vendorId_leadId: {
+              vendorId,
+              leadId: lead.id,
+            },
+          },
+          update: {},
+          create: {
+            vendorId,
+            leadId: lead.id,
+            channel: "whatsapp",
+            isOpen: true,
+          },
+          include: { lead: true },
+        });
+
+        // Avoid duplicates if also passed in conversationIds
+        if (!validConversations.find(c => c.id === conv.id)) {
+          validConversations.push(conv);
+        }
+      }
+    }
+
+    if (!validConversations.length) {
+      throw new Error("No valid recipients or conversations found");
     }
 
     // 3️⃣ Create campaign
@@ -50,7 +105,21 @@ class CampaignService {
     // 4️⃣ Queue messages
     const messages = [];
 
-    for (const conv of conversations) {
+    for (const conv of validConversations) {
+      // Compute per-recipient body variables
+      let recipientBodyVariables = bodyVariables;
+      
+      // If variableModes is provided, substitute company names where needed
+      if (variableModes && variableModes.length > 0) {
+        recipientBodyVariables = bodyVariables.map((val, idx) => {
+          if (variableModes[idx] === 'company') {
+            // Use company name, fallback to phone number if not available
+            return conv.lead.companyName || conv.lead.phoneNumber || 'Customer';
+          }
+          return val;
+        });
+      }
+
       messages.push(
         prisma.message.create({
           data: {
@@ -64,6 +133,7 @@ class CampaignService {
             outboundPayload: {
               templateId,
               language,
+              bodyVariables: recipientBodyVariables,
             },
           },
         })

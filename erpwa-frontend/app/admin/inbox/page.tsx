@@ -528,21 +528,27 @@ function ChatArea({
     if (!inputValue.trim() || sending) return;
 
     const text = inputValue.trim();
+    // 1️⃣ Capture values needed for API
+    const currentReplyToId = replyTo?.whatsappMessageId;
+
+    // 2️⃣ Reset ALL UI state immediately
     setInputValue("");
     setSending(true);
+    setReplyTo(null); // ✅ Clear reply context instantly
+    setMediaModal(null);
+    setShowAttachMenu(false);
+    setImagePreview(null);
 
     try {
       await api.post("/vendor/whatsapp/send-message", {
         conversationId: conversation.id,
         text,
-        replyToMessageId: replyTo?.whatsappMessageId,
+        replyToMessageId: currentReplyToId,
       });
 
-      setReplyTo(null);
       requestAnimationFrame(() => inputRef.current?.focus());
     } catch (err) {
       console.error("Failed to send message", err);
-      // optional: toast / snackbar
     } finally {
       setSending(false);
     }

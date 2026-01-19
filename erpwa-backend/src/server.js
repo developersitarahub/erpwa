@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import http from "http";
 import "./cron/templateStatus.cron.js";
 import prisma from "./prisma.js";
+import { processWhatsappQueue } from "./workers/whatsapp.worker.js";
 import authRoutes from "./routes/auth.routes.js";
 import vendorWhatsappRoutes from "./routes/vendorWhatsapp.route.js";
 import vendorWhatsappMessageRoutes from "./routes/vendorWhatsappMessage.route.js";
@@ -77,6 +78,12 @@ async function startServer() {
     console.error("❌ Database connection failed");
     console.error(error);
   }
+
+  // Start WhatsApp campaign workers
+  // Start WhatsApp campaign worker
+  processWhatsappQueue().catch((err) => {
+    console.error("❌ WhatsApp worker crashed:", err);
+  });
 
   const server = http.createServer(app);
   initSocket(server);

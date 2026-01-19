@@ -10,10 +10,17 @@ import CampaignTemplate from "@/components/campaigns/createTemplateCampaignModal
 import api from "@/lib/api";
 import { toast } from "react-toastify";
 
+interface Campaign {
+  id: string | number;
+  type: string;
+  createdAt: string;
+  [key: string]: unknown;
+}
+
 export default function CampaignsPage() {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
