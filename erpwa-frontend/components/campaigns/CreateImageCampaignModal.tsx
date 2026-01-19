@@ -232,16 +232,20 @@ export default function CreateImageCampaignModal({
         categoryId: selectedCategoryId,
         subCategoryId: selectedSubcategoryId,
         captionMode: "TITLE",
-        imageLimit: selectedImages.size,
+        imageIds: Array.from(selectedImages), // Send actual image IDs
         conversationIds,
       });
 
       // Success! Trigger refresh
       onSuccess?.();
       onClose();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to create campaign");
+    } catch (err: any) {
+      console.error("Campaign creation error:", err);
+      const errorMessage =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to create campaign";
+      alert(errorMessage);
     } finally {
       setIsLaunching(false);
     }

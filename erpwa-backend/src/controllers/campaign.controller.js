@@ -5,7 +5,7 @@ class CampaignController {
     try {
       const result = await CampaignService.createTemplateCampaign(
         req.user.vendorId,
-        req.body
+        req.body,
       );
       res.json(result);
     } catch (err) {
@@ -15,12 +15,18 @@ class CampaignController {
 
   static async createImageCampaign(req, res) {
     try {
+      console.log(
+        "Creating image campaign with payload:",
+        JSON.stringify(req.body, null, 2),
+      );
       const result = await CampaignService.createImageCampaign(
         req.user.vendorId,
-        req.body
+        req.body,
       );
       res.json(result);
     } catch (err) {
+      console.error("Image campaign creation error:", err.message);
+      console.error("Stack trace:", err.stack);
       res.status(400).json({ error: err.message });
     }
   }
