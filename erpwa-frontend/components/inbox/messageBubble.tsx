@@ -78,11 +78,15 @@ export default function MessageBubble({
           <div className="rounded-t-lg overflow-hidden">
             {msg.template.header.type === "IMAGE" &&
               msg.template.header.mediaUrl && (
-                <img
-                  src={msg.template.header.mediaUrl}
-                  alt="Header"
-                  className="w-full h-auto object-cover max-h-[300px]"
-                />
+                <div className="relative w-full h-auto">
+                  <Image
+                    src={msg.template.header.mediaUrl}
+                    alt="Header"
+                    width={500}
+                    height={300}
+                    className="w-full h-auto object-cover max-h-[300px]"
+                  />
+                </div>
               )}
             {msg.template.header.type === "VIDEO" &&
               msg.template.header.mediaUrl && (

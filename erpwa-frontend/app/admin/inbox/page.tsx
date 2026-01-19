@@ -872,6 +872,7 @@ const mapApiConversation = (c: ApiConversation): Conversation => {
       if (lastMsg.messageType === "video") return "🎥 Video";
       if (lastMsg.messageType === "audio") return "🎵 Audio";
       if (lastMsg.messageType === "document") return "📄 Document";
+      if (lastMsg.messageType === "template") return "📄 Template";
 
       // Fallback to content checks
       if (lastMsg.content?.startsWith("[image")) return "📷 Photo";

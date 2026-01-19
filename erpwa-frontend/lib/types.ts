@@ -121,6 +121,11 @@ export interface Message {
   status?: "sent" | "delivered" | "read" | "failed" | "received";
 
   template?: {
+    header?: {
+      type: string;
+      text?: string;
+      mediaUrl?: string;
+    };
     footer?: string;
     buttons?: Array<{ text: string; type: string; value?: string }>;
   };
