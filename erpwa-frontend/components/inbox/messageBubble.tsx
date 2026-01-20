@@ -73,7 +73,7 @@ export default function MessageBubble({
             ? "bg-wa-outbound rounded-br-none"
             : "bg-wa-inbound rounded-bl-none"
         }
-        rounded-lg max-w-[85%] md:max-w-md`}
+        rounded-lg max-w-[50%] sm:max-w-[40%] md:max-w-[35%] lg:max-w-[30%] xl:max-w-[25%]`}
       >
         {/* TEMPLATE HEADER (Rich Media) */}
         {msg.template?.header && (

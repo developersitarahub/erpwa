@@ -125,7 +125,7 @@ export default function ConversationList({
   };
 
   return (
-    <div className="w-full md:w-96 bg-card border-r border-border flex flex-col h-full">
+    <div className="w-full md:w-80 lg:w-96 xl:w-[420px] bg-card border-r border-border flex flex-col h-full">
       <div className="bg-card p-3 flex items-center justify-between border-b border-border">
         <h2 className="text-xl font-semibold text-foreground">Chats</h2>
         <div className="flex items-center gap-4">
@@ -218,12 +218,12 @@ export default function ConversationList({
               </div>
 
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between mb-1">
-                  <p className="text-base font-semibold text-foreground truncate">
+                <div className="flex items-center justify-between mb-1 gap-2">
+                  <p className="text-sm sm:text-base font-semibold text-foreground truncate">
                     {conv.companyName}
                   </p>
 
-                  <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                  <span className="text-[10px] sm:text-xs text-muted-foreground flex-shrink-0">
                     {conv.lastActivity}
                   </span>
                 </div>

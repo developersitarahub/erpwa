@@ -656,9 +656,7 @@ function ChatArea({
       pointer-events-none
     "
         >
-          <div
-            className="absolute inset-0 bg-[url('/chat-bg.png')] bg-repeat bg-center opacity-30 dark:opacity-[0.5]"
-          />
+          <div className="absolute inset-0 bg-[url('/chat-bg.png')] bg-repeat bg-center opacity-30 dark:opacity-[0.5]" />
         </div>
 
         {/* SCROLLABLE MESSAGES */}
@@ -969,9 +967,9 @@ export default function InboxPage() {
               m.outboundPayload?.template ||
               (m.outboundPayload?.name
                 ? {
-                  footer: m.outboundPayload.footer,
-                  buttons: m.outboundPayload.buttons,
-                }
+                    footer: m.outboundPayload.footer,
+                    buttons: m.outboundPayload.buttons,
+                  }
                 : undefined),
           };
         },
@@ -990,11 +988,11 @@ export default function InboxPage() {
         prev.map((c) =>
           c.id === id
             ? {
-              ...c,
-              sessionStarted: res.data.sessionStarted,
-              sessionActive: res.data.sessionActive,
-              sessionExpiresAt: res.data.sessionExpiresAt,
-            }
+                ...c,
+                sessionStarted: res.data.sessionStarted,
+                sessionActive: res.data.sessionActive,
+                sessionExpiresAt: res.data.sessionExpiresAt,
+              }
             : c,
         ),
       );
@@ -1043,8 +1041,8 @@ export default function InboxPage() {
       // Update local state
       setConversations((prev) =>
         prev.map((c) =>
-          c.leadId === leadId ? { ...c, status: status as any } : c
-        )
+          c.leadId === leadId ? { ...c, status: status as any } : c,
+        ),
       );
       toast.success("Lead status updated");
     } catch (err) {
@@ -1058,10 +1056,11 @@ export default function InboxPage() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-full overflow-hidden">
+    <div className="flex flex-col md:flex-row h-full overflow-hidden bg-background">
       <div
-        className={`${showChat ? "hidden md:block" : "block"
-          } w-full md:w-auto h-full`}
+        className={`${
+          showChat ? "hidden md:block" : "block"
+        } w-full md:w-auto h-full flex-shrink-0`}
       >
         <ConversationList
           conversations={conversations}
@@ -1071,7 +1070,7 @@ export default function InboxPage() {
         />
       </div>
       <div
-        className={`${showChat ? "block" : "hidden md:block"} flex-1 h-full`}
+        className={`${showChat ? "block" : "hidden md:block"} flex-1 h-full min-w-0`}
       >
         {currentConversation ? (
           <ChatArea
@@ -1085,15 +1084,15 @@ export default function InboxPage() {
             onUpdateLeadStatus={handleUpdateLeadStatus}
           />
         ) : (
-          <div className="h-full flex items-center justify-center bg-muted/20">
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-                <MessageSquareIcon />
+          <div className="h-full flex items-center justify-center bg-muted/10">
+            <div className="text-center px-4 max-w-md">
+              <div className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 sm:mb-6 rounded-full bg-primary/10 flex items-center justify-center">
+                <MessageSquareIcon className="w-10 h-10 sm:w-12 sm:h-12 text-primary" />
               </div>
-              <h3 className="text-lg font-medium text-foreground">
+              <h3 className="text-lg sm:text-xl font-semibold text-foreground mb-2">
                 Select a conversation
               </h3>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-xs sm:text-sm text-muted-foreground">
                 Choose a chat from the left to start messaging
               </p>
             </div>

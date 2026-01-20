@@ -1,6 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, Phone, Video, MoreVertical, ChevronDown } from "lucide-react";
+import {
+  ArrowLeft,
+  Phone,
+  Video,
+  MoreVertical,
+  ChevronDown,
+} from "lucide-react";
 import type { Conversation } from "@/lib/types";
 import { toast } from "react-toastify";
 
@@ -18,19 +24,26 @@ export default function ChatHeader({
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (statusRef.current && !statusRef.current.contains(event.target as Node)) {
+      if (
+        statusRef.current &&
+        !statusRef.current.contains(event.target as Node)
+      ) {
         setIsStatusOpen(false);
       }
     }
-    if (isStatusOpen) document.addEventListener("mousedown", handleClickOutside);
+    if (isStatusOpen)
+      document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isStatusOpen]);
 
   const statusColors: Record<string, string> = {
     new: "bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-500/30",
-    contacted: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
-    qualified: "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
-    converted: "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30",
+    contacted:
+      "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border-yellow-500/30",
+    qualified:
+      "bg-green-500/20 text-green-700 dark:text-green-400 border-green-500/30",
+    converted:
+      "bg-purple-500/20 text-purple-700 dark:text-purple-400 border-purple-500/30",
     lost: "bg-red-500/20 text-red-700 dark:text-red-400 border-red-500/30",
   };
 
@@ -45,27 +58,29 @@ export default function ChatHeader({
   const currentStatus = conversation.status || "new";
 
   return (
-    <div className="relative z-50 bg-card px-4 py-2.5 flex items-center justify-between border-b border-border flex-shrink-0 shadow-sm">
-      <div className="flex items-center gap-3">
+    <div className="relative z-50 bg-card px-3 sm:px-4 py-2.5 flex items-center justify-between border-b border-border flex-shrink-0 shadow-sm">
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
         {onBack && (
           <button onClick={onBack} className="md:hidden">
             <ArrowLeft className="w-5 h-5 text-foreground" />
           </button>
         )}
 
-        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-semibold flex-shrink-0">
+        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-primary to-primary/70 flex items-center justify-center text-white font-semibold flex-shrink-0">
           {conversation.companyName?.charAt(0)?.toUpperCase() || "?"}
         </div>
 
-        <div className="min-w-0">
-          <h3 className="font-medium text-foreground truncate max-w-[150px] sm:max-w-xs">
+        <div className="min-w-0 flex-1">
+          <h3 className="font-medium text-sm sm:text-base text-foreground truncate">
             {conversation.companyName}
           </h3>
-          <p className="text-xs text-muted-foreground truncate">{conversation.phone}</p>
+          <p className="text-[10px] sm:text-xs text-muted-foreground truncate">
+            {conversation.phone}
+          </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
         {/* Lead Status Dropdown */}
         {conversation.leadId && onUpdateLeadStatus && (
           <div className="relative block" ref={statusRef}>
@@ -93,7 +108,9 @@ export default function ChatHeader({
 
                       toast.info(
                         <div className="flex flex-col gap-3">
-                          <p className="font-medium">Change lead status to "{label}"?</p>
+                          <p className="font-medium">
+                            Change lead status to "{label}"?
+                          </p>
                           <div className="flex gap-2 justify-end">
                             <button
                               onClick={() => {
@@ -119,12 +136,14 @@ export default function ChatHeader({
                           autoClose: false,
                           closeButton: false,
                           position: "top-center",
-                        }
+                        },
                       );
                     }}
                     className={`w-full text-left px-4 py-2.5 text-sm hover:bg-muted/80 transition-colors flex items-center gap-3 cursor-pointer ${key === currentStatus ? "bg-muted/50 font-medium" : "text-foreground"}`}
                   >
-                    <div className={`w-2.5 h-2.5 rounded-full ${statusColors[key]?.match(/text-(\w+-\d+)/)?.[1] ? `bg-${statusColors[key]?.match(/text-(\w+-\d+)/)?.[1]}` : "bg-gray-400"}`} />
+                    <div
+                      className={`w-2.5 h-2.5 rounded-full ${statusColors[key]?.match(/text-(\w+-\d+)/)?.[1] ? `bg-${statusColors[key]?.match(/text-(\w+-\d+)/)?.[1]}` : "bg-gray-400"}`}
+                    />
                     {label}
                   </button>
                 ))}
@@ -133,14 +152,14 @@ export default function ChatHeader({
           </div>
         )}
 
-        <motion.button className="p-2 rounded-full hover:bg-muted/50">
+        <motion.button className="hidden sm:flex p-2 rounded-full hover:bg-muted/50">
           <Video className="w-5 h-5 text-muted-foreground" />
         </motion.button>
-        <motion.button className="p-2 rounded-full hover:bg-muted/50">
+        <motion.button className="hidden sm:flex p-2 rounded-full hover:bg-muted/50">
           <Phone className="w-5 h-5 text-muted-foreground" />
         </motion.button>
-        <motion.button className="p-2 rounded-full hover:bg-muted/50">
-          <MoreVertical className="w-5 h-5 text-muted-foreground" />
+        <motion.button className="p-1.5 sm:p-2 rounded-full hover:bg-muted/50">
+          <MoreVertical className="w-4 h-4 sm:w-5 sm:h-5 text-muted-foreground" />
         </motion.button>
       </div>
     </div>

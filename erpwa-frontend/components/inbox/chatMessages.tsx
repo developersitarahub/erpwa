@@ -44,7 +44,7 @@ export default function ChatMessages({
 
   return (
     <div className="relative z-10 h-full overflow-y-auto">
-      <div className="p-4 space-y-2">
+      <div className="p-3 sm:p-4 space-y-2">
         <AnimatePresence>
           {messages.map((msg, i) => (
             <div key={msg.id}>
