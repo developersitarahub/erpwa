@@ -20,7 +20,10 @@ import type { Category, GalleryImage } from "@/lib/types"
 import { toast } from "react-toastify"
 import { processMedia } from "@/lib/mediaProcessor"
 
+import { useUpload } from "@/context/GlobalUploadContext";
+
 export default function GalleryPage() {
+  const { batches: uploadBatches, addBatch, clearCompleted, clearAll: clearAllHistory } = useUpload(); // Use global hook
   const [categories, setCategories] = useState<Category[]>([])
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [selectedSubcategory, setSelectedSubcategory] = useState<number | null>(null)
@@ -65,26 +68,7 @@ export default function GalleryPage() {
     count?: number;
   }>({ isOpen: false, type: 'single' });
 
-  // Upload State
-  // Batch Type
-  interface UploadBatch {
-    id: string
-    files: { file: File; status: "pending" | "processing" | "success" | "error"; error?: string }[]
-    categoryId: string
-    subcategoryId: string
-    categoryName: string
-    subcategoryName: string // Added to store name instead of ID
-    status: "pending" | "processing" | "completed" | "partial_error"
-    progress: number // 0-100 batch completion
-    processedCount: number
-    totalCount: number
-    successCount: number
-    failedCount: number
-  }
-
-  // Upload Queue State (now Batches)
-  const [uploadBatches, setUploadBatches] = useState<UploadBatch[]>([])
-  const isProcessing = useRef(false)
+  // Note: Upload State and logic moved to GlobalUploadContext
 
   useEffect(() => {
     loadCategories()
@@ -178,118 +162,7 @@ export default function GalleryPage() {
     }
   }
 
-  // Process Batches
-  useEffect(() => {
-    const processNextBatch = async () => {
-      if (isProcessing.current) return
-
-      // Find first pending batch
-      const batchIndex = uploadBatches.findIndex((b) => b.status === "pending" || b.status === "processing")
-      if (batchIndex === -1) return
-
-      const batch = uploadBatches[batchIndex]
-      // If batch is marked processing but we are here, it implies we are continuing (or recovering state, though local state is simpler)
-      // Actually, we usually take 'pending'. 'processing' implies it's already running in a parallel loop, but our effect is simple sequential.
-      // Let's assume we pick up where we left off or start new.
-
-      // If the batch is already completed in state, skip (shouldn't happen with findIndex)
-      if (batch.processedCount >= batch.totalCount && batch.files.every(f => f.status !== 'pending')) {
-        // Just marks as completed if not
-        if (batch.status !== 'completed' && batch.status !== 'partial_error') {
-          setUploadBatches(prev => prev.map((b, i) => i === batchIndex ? { ...b, status: 'completed', progress: 100 } : b))
-        }
-        return
-      }
-
-      isProcessing.current = true
-
-      // Mark batch processing if not already
-      if (batch.status === "pending") {
-        setUploadBatches((prev) =>
-          prev.map((b, i) => (i === batchIndex ? { ...b, status: "processing" } : b))
-        )
-      }
-
-      // Find next pending file in this batch
-      const fileIndex = batch.files.findIndex(f => f.status === 'pending')
-      if (fileIndex === -1) {
-        // Batch done
-        const isError = batch.failedCount > 0
-        setUploadBatches(prev => prev.map((b, i) => i === batchIndex ? { ...b, status: isError ? 'partial_error' : 'completed', progress: 100 } : b))
-        isProcessing.current = false
-        return
-      }
-
-      const fileItem = batch.files[fileIndex]
-
-      // Update file status to processing
-      setUploadBatches(prev => prev.map((b, i) => {
-        if (i !== batchIndex) return b
-        const newFiles = [...b.files]
-        newFiles[fileIndex] = { ...newFiles[fileIndex], status: 'processing' }
-        return { ...b, files: newFiles }
-      }))
-
-      try {
-        const { file: compressedFile } = await processMedia(fileItem.file)
-
-        const formData = new FormData()
-        formData.append("category_id", batch.categoryId)
-        if (batch.subcategoryId) {
-          formData.append("subcategory_id", batch.subcategoryId)
-        }
-        formData.append("images", compressedFile)
-
-        const response = await galleryAPI.upload(formData)
-        const success = response.data?.success !== false
-
-        setUploadBatches(prev => prev.map((b, i) => {
-          if (i !== batchIndex) return b
-          const newFiles = [...b.files]
-          newFiles[fileIndex] = { ...newFiles[fileIndex], status: success ? 'success' : 'error', error: success ? undefined : 'Upload rejected' }
-          const newProcessed = b.processedCount + 1
-          const newSuccess = b.successCount + (success ? 1 : 0)
-          const newFailed = b.failedCount + (success ? 0 : 1)
-          const newProgress = Math.round((newProcessed / b.totalCount) * 100)
-          return {
-            ...b,
-            files: newFiles,
-            processedCount: newProcessed,
-            successCount: newSuccess,
-            failedCount: newFailed,
-            progress: newProgress
-          }
-        }))
-
-        if (success) {
-          loadImages(currentPage, false)
-        }
-
-      } catch (error: any) {
-        setUploadBatches(prev => prev.map((b, i) => {
-          if (i !== batchIndex) return b
-          const newFiles = [...b.files]
-          newFiles[fileIndex] = { ...newFiles[fileIndex], status: 'error', error: error.message || "Failed" }
-          const newProcessed = b.processedCount + 1
-          const newFailed = b.failedCount + 1
-          const newProgress = Math.round((newProcessed / b.totalCount) * 100)
-          return {
-            ...b,
-            files: newFiles,
-            processedCount: newProcessed,
-            failedCount: newFailed,
-            progress: newProgress
-          }
-        }))
-      } finally {
-        // Recursive step or next loop
-        isProcessing.current = false
-        // Trigger next effect run
-      }
-    }
-
-    processNextBatch()
-  }, [uploadBatches, currentPage])
+  // Process Batches (Formerly here) - Handled globally now
 
   const handleAddToQueue = (e: React.FormEvent) => {
     e.preventDefault()
@@ -335,32 +208,21 @@ export default function GalleryPage() {
       return
     }
 
-    // Create a NEW BATCH
-    const newBatch: UploadBatch = {
-      id: Math.random().toString(36).substring(7),
-      files: validImages.map(f => ({ file: f, status: 'pending' })),
-      categoryId: uploadForm.category_id,
-      subcategoryId: uploadForm.subcategory_id,
+    // Use global addBatch
+    addBatch(
+      uploadForm.category_id,
+      uploadForm.subcategory_id,
       categoryName,
       subcategoryName,
-      status: "pending",
-      progress: 0,
-      processedCount: 0,
-      totalCount: validImages.length,
-      successCount: 0,
-      failedCount: 0
-    }
-
-    setUploadBatches((prev) => [...prev, newBatch])
+      validImages
+    );
 
     setSelectedImages([])
     // Do NOT reset category/subcategory as requested
-    toast.info(`Added batch of ${validImages.length} image(s) to queue`)
+    // toast info handled in context
   }
 
-  const clearCompleted = () => {
-    setUploadBatches(prev => prev.filter(b => b.status === 'pending' || b.status === 'processing'))
-  }
+  // clearCompleted handled by extracting function from context above
 
   const handleDeleteImage = (imageId: number, imageTitle: string) => {
     setDeleteConf({
@@ -1235,6 +1097,3 @@ function BatchCard({ batch }: { batch: any }) {
     </div >
   )
 }
-
-
-

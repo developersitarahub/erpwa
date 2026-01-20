@@ -1160,14 +1160,14 @@ export default function LeadsPage() {
   }
 
   const columns = [
-    { key: "company_name", label: "Company", width: "w-32" },
-    { key: "mobile_number", label: "Phone", width: "w-32" },
-    { key: "email", label: "Email", width: "w-32" },
-    { key: "city", label: "City", width: "w-32" },
-    { key: "category_name", label: "Category", width: "w-32" },
-    { key: "sub_category_name", label: "Sub-Category", width: "w-32" },
-    { key: "status", label: "Status", width: "w-32" },
-    { key: "sales_person_name", label: "Sales Person", width: "w-32" },
+    { key: "company_name", label: "Company", width: "min-w-[200px]" },
+    { key: "mobile_number", label: "Phone", width: "min-w-[150px]" },
+    { key: "email", label: "Email", width: "min-w-[200px]" },
+    { key: "city", label: "City", width: "min-w-[150px]" },
+    { key: "category_name", label: "Category", width: "min-w-[150px]" },
+    { key: "sub_category_name", label: "Sub-Category", width: "min-w-[150px]" },
+    { key: "status", label: "Status", width: "min-w-[120px]" },
+    { key: "sales_person_name", label: "Sales Person", width: "min-w-[150px]" },
   ]
 
   return (
@@ -1526,7 +1526,7 @@ export default function LeadsPage() {
             {paginatedLeads.length > 0 ? (
               <>
                 <div className="overflow-x-auto">
-                  <table className="text-sm table-fixed bg-card">
+                  <table className="text-sm bg-card w-full">
                     <thead>
                       <tr className="border-b border-border bg-secondary/30">
                         <th className="text-left py-3 px-3 w-10 pl-10">

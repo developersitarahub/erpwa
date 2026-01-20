@@ -430,173 +430,177 @@ export default function ManageTeam() {
                   )}
                 </tbody>
               </table>
-            </div>
+            </div >
 
             {/* Pagination */}
-            {filteredTeam.length > 0 && (
-              <div className="flex flex-col sm:flex-row justify-center items-center gap-3 p-4 md:p-6 border-t border-border">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="bg-secondary border-border text-foreground hover:bg-muted transition-all duration-200 font-semibold"
-                >
-                  <ChevronLeft className="w-4 h-4 mr-1" /> Previous
-                </Button>
+            {
+              filteredTeam.length > 0 && (
+                <div className="flex flex-col sm:flex-row justify-center items-center gap-3 p-4 md:p-6 border-t border-border">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="bg-secondary border-border text-foreground hover:bg-muted transition-all duration-200 font-semibold"
+                  >
+                    <ChevronLeft className="w-4 h-4 mr-1" /> Previous
+                  </Button>
 
-                {/* Page Numbers */}
-                <div className="flex gap-2">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1)
-                    .filter((page) => {
-                      if (totalPages <= 7) return true
-                      if (page === 1 || page === totalPages) return true
-                      if (page >= currentPage - 1 && page <= currentPage + 1) return true
-                      return false
-                    })
-                    .map((page, idx, arr) => {
-                      if (idx > 0 && arr[idx - 1] + 1 < page) {
+                  {/* Page Numbers */}
+                  <div className="flex gap-2">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter((page) => {
+                        if (totalPages <= 7) return true
+                        if (page === 1 || page === totalPages) return true
+                        if (page >= currentPage - 1 && page <= currentPage + 1) return true
+                        return false
+                      })
+                      .map((page, idx, arr) => {
+                        if (idx > 0 && arr[idx - 1] + 1 < page) {
+                          return (
+                            <span key={`dots-${page}`} className="px-3 text-muted-foreground font-semibold">
+                              ...
+                            </span>
+                          )
+                        }
                         return (
-                          <span key={`dots-${page}`} className="px-3 text-muted-foreground font-semibold">
-                            ...
-                          </span>
+                          <Button
+                            key={page}
+                            size="sm"
+                            onClick={() => setCurrentPage(page)}
+                            variant={page === currentPage ? "primary" : "outline"}
+                            className={`transition-all duration-200 font-semibold min-w-10 ${page === currentPage
+                              ? "bg-primary hover:bg-primary/90 text-white shadow-lg"
+                              : "bg-secondary border-border text-foreground hover:bg-muted/70"
+                              }`}
+                          >
+                            {page}
+                          </Button>
                         )
-                      }
-                      return (
-                        <Button
-                          key={page}
-                          size="sm"
-                          onClick={() => setCurrentPage(page)}
-                          variant={page === currentPage ? "primary" : "outline"}
-                          className={`transition-all duration-200 font-semibold min-w-10 ${page === currentPage
-                            ? "bg-primary hover:bg-primary/90 text-white shadow-lg"
-                            : "bg-secondary border-border text-foreground hover:bg-muted/70"
-                            }`}
-                        >
-                          {page}
-                        </Button>
-                      )
-                    })}
-                </div>
+                      })}
+                  </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="bg-secondary border-border text-foreground hover:bg-muted transition-all duration-200 font-semibold"
-                >
-                  Next <ChevronRight className="w-4 h-4 ml-1" />
-                </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="bg-secondary border-border text-foreground hover:bg-muted transition-all duration-200 font-semibold"
+                  >
+                    Next <ChevronRight className="w-4 h-4 ml-1" />
+                  </Button>
 
-                {/* Page Info */}
-                <div className="text-center sm:ml-4 sm:pl-4 sm:border-l border-border flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
-                  <p className="text-sm font-semibold text-foreground">
-                    Page <span className="text-primary">{currentPage}</span> of{" "}
-                    <span className="text-primary">{totalPages}</span>
-                  </p>
+                  {/* Page Info */}
+                  <div className="text-center sm:ml-4 sm:pl-4 sm:border-l border-border flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+                    <p className="text-sm font-semibold text-foreground">
+                      Page <span className="text-primary">{currentPage}</span> of{" "}
+                      <span className="text-primary">{totalPages}</span>
+                    </p>
 
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-muted-foreground">Rows per page:</span>
-                    <select
-                      className="px-2 py-1 bg-secondary border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-                      value={itemsPerPage}
-                      onChange={(e) => {
-                        setItemsPerPage(Number(e.target.value))
-                        setCurrentPage(1)
-                      }}
-                    >
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={30}>30</option>
-                      <option value={50}>50</option>
-                      <option value={100}>100</option>
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">Rows per page:</span>
+                      <select
+                        className="px-2 py-1 bg-secondary border border-border rounded text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                        value={itemsPerPage}
+                        onChange={(e) => {
+                          setItemsPerPage(Number(e.target.value))
+                          setCurrentPage(1)
+                        }}
+                      >
+                        <option value={10}>10</option>
+                        <option value={20}>20</option>
+                        <option value={30}>30</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
-          </Card>
-        </motion.div>
-      </div>
+              )
+            }
+          </Card >
+        </motion.div >
+      </div >
 
       {/* Add User Modal */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-card w-full max-w-md rounded-xl shadow-lg border border-border mt-16 md:mt-0"
-          >
-            <div className="flex justify-between items-center p-6 border-b border-border">
-              <h2 className="text-lg font-semibold text-foreground">{isEditMode ? "Edit Name" : "Add Team Member"}</h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">Full Name</label>
-                <Input
-                  name="name"
-                  value={formData.name}
-                  onChange={handleInputChange}
-                  placeholder="e.g. John Doe"
-                  required
-                />
+      {
+        isModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-card w-full max-w-md rounded-xl shadow-lg border border-border mt-16 md:mt-0"
+            >
+              <div className="flex justify-between items-center p-6 border-b border-border">
+                <h2 className="text-lg font-semibold text-foreground">{isEditMode ? "Edit Name" : "Add Team Member"}</h2>
+                <button onClick={() => setIsModalOpen(false)} className="text-muted-foreground hover:text-foreground">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
 
-              {!isEditMode && (
-                <>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Email Address</label>
-                    <Input
-                      name="email"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="john@company.com"
-                      required
-                    />
-                  </div>
+              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Full Name</label>
+                  <Input
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    placeholder="e.g. John Doe"
+                    required
+                  />
+                </div>
 
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">Role</label>
-                    <select
-                      name="role"
-                      value={formData.role}
-                      onChange={handleInputChange}
-                      disabled={userRole === "vendor_admin"}
-                      className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-100"
-                    >
-                      <option value="sales">Sales Executive</option>
-                      {/* Only Owners can create Admins */}
-                      {userRole === "vendor_owner" && (
-                        <option value="vendor_admin">Admin</option>
-                      )}
-                    </select>
-                  </div>
-                </>
-              )}
+                {!isEditMode && (
+                  <>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Email Address</label>
+                      <Input
+                        name="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={handleInputChange}
+                        placeholder="john@company.com"
+                        required
+                      />
+                    </div>
 
-              <div className="pt-4 flex justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      {isEditMode ? "Updating..." : "Sending Invite..."}
-                    </>
-                  ) : (
-                    isEditMode ? "Update Name" : "Send Invite"
-                  )}
-                </Button>
-              </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
-    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium text-foreground">Role</label>
+                      <select
+                        name="role"
+                        value={formData.role}
+                        onChange={handleInputChange}
+                        disabled={userRole === "vendor_admin"}
+                        className="w-full flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-100"
+                      >
+                        <option value="sales">Sales Executive</option>
+                        {/* Only Owners can create Admins */}
+                        {userRole === "vendor_owner" && (
+                          <option value="vendor_admin">Admin</option>
+                        )}
+                      </select>
+                    </div>
+                  </>
+                )}
+
+                <div className="pt-4 flex justify-end gap-3">
+                  <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        {isEditMode ? "Updating..." : "Sending Invite..."}
+                      </>
+                    ) : (
+                      isEditMode ? "Update Name" : "Send Invite"
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )
+      }
+    </div >
   )
 }

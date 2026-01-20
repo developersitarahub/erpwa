@@ -792,13 +792,13 @@ export default function CategoriesPage() {
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32">
                             Mobile Number
                           </th>
-                          <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32">
+                          <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32 hidden md:table-cell">
                             Category
                           </th>
-                          <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32">
+                          <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32 hidden md:table-cell">
                             Sub-Category
                           </th>
-                          <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32">
+                          <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32 hidden md:table-cell">
                             Sales Person
                           </th>
                           <th className="text-left py-3 px-4 font-medium text-muted-foreground w-32">Status</th>
@@ -823,21 +823,21 @@ export default function CategoriesPage() {
                                   </div>
                                 </CoolTooltip>
                               </td>
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-4 hidden md:table-cell">
                                 <CoolTooltip content={contact.category_name}>
                                   <div className="truncate w-full max-w-[120px] text-foreground">
                                     {contact.category_name || "--"}
                                   </div>
                                 </CoolTooltip>
                               </td>
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-4 hidden md:table-cell">
                                 <CoolTooltip content={contact.sub_category_name}>
                                   <div className="truncate w-full max-w-[120px] text-foreground">
                                     {contact.sub_category_name || "--"}
                                   </div>
                                 </CoolTooltip>
                               </td>
-                              <td className="py-3 px-4">
+                              <td className="py-3 px-4 hidden md:table-cell">
                                 <CoolTooltip content={contact.sales_person_name}>
                                   <div className="truncate w-full max-w-[120px] text-foreground">
                                     {contact.sales_person_name || "--"}

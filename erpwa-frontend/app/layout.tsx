@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/context/theme-provider";
 import { AuthProvider } from "@/context/authContext";
 import { ToastContainer } from "react-toastify";
+import { UploadProvider } from "@/context/GlobalUploadContext";
 import "react-toastify/dist/ReactToastify.css";
 
 import "./globals.css";
@@ -26,7 +27,9 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="font-sans antialiased">
         <ThemeProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <UploadProvider>{children}</UploadProvider>
+          </AuthProvider>
 
           {/* ✅ Global Toast Container (theme-aware) */}
           <ToastContainer
