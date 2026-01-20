@@ -28,7 +28,7 @@ router.get(
     // 🔒 ROLE-BASED FILTERING: Sales persons only see their assigned leads
     if (req.user.role === "sales") {
       where.lead = {
-        salesPersonName: req.user.name,
+        salesPersonId: req.user.id,
       };
     }
 
@@ -104,7 +104,7 @@ router.get(
     // 🔒 ROLE-BASED FILTERING: Sales persons only see their assigned leads
     if (req.user.role === "sales") {
       where.lead = {
-        salesPersonName: req.user.name,
+        salesPersonId: req.user.id,
       };
     }
 
@@ -272,7 +272,7 @@ router.post(
     // 🔒 ROLE-BASED FILTERING: Sales persons only see their assigned leads
     if (req.user.role === "sales") {
       where.lead = {
-        salesPersonName: req.user.name,
+        salesPersonId: req.user.id,
       };
     }
 

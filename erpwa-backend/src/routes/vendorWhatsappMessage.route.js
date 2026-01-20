@@ -62,6 +62,20 @@ router.post(
       });
     }
 
+    // 🔒 ROLE-BASED ACCESS: Sales persons can only message their assigned leads
+    // Admins and owners can message anyone
+    if (req.user.role === "sales") {
+      // Allow if assigned to this sales person OR if no assignment (backward compatibility)
+      if (
+        conversation.lead.salesPersonId &&
+        conversation.lead.salesPersonId !== req.user.id
+      ) {
+        return res.status(403).json({
+          message: "You don't have access to this conversation",
+        });
+      }
+    }
+
     if (!conversation.isOpen) {
       return res.status(400).json({
         message: "Conversation is closed",
@@ -128,7 +142,7 @@ router.post(
               }
             : {}),
         }),
-      }
+      },
     );
 
     const metaData = await response.json();
@@ -210,7 +224,7 @@ router.post(
       message: "Message sent",
       data: message,
     });
-  })
+  }),
 );
 
 router.post(
@@ -241,6 +255,20 @@ router.post(
 
     if (!conversation || !conversation.vendor) {
       return res.status(404).json({ message: "Conversation not found" });
+    }
+
+    // 🔒 ROLE-BASED ACCESS: Sales persons can only send media to their assigned leads
+    // Admins and owners can send to anyone
+    if (req.user.role === "sales") {
+      // Allow if assigned to this sales person OR if no assignment (backward compatibility)
+      if (
+        conversation.lead.salesPersonId &&
+        conversation.lead.salesPersonId !== req.user.id
+      ) {
+        return res.status(403).json({
+          message: "You don't have access to this conversation",
+        });
+      }
     }
 
     if (
@@ -281,7 +309,7 @@ router.post(
           ...waForm.getHeaders(),
         },
         body: waForm,
-      }
+      },
     );
 
     const uploadData = await uploadRes.json();
@@ -300,10 +328,10 @@ router.post(
     const mediaType = file.mimetype.startsWith("image/")
       ? "image"
       : file.mimetype.startsWith("video/")
-      ? "video"
-      : file.mimetype.startsWith("audio/")
-      ? "audio"
-      : "document";
+        ? "video"
+        : file.mimetype.startsWith("audio/")
+          ? "audio"
+          : "document";
 
     const sendRes = await fetch(
       `https://graph.facebook.com/v24.0/${phoneNumberId}/messages`,
@@ -328,7 +356,7 @@ router.post(
             context: { message_id: replyToMessageId },
           }),
         }),
-      }
+      },
     );
 
     const sendData = await sendRes.json();
@@ -432,7 +460,7 @@ router.post(
     io.to(`vendor:${conversation.vendorId}`).emit("inbox:update");
 
     res.json({ success: true });
-  })
+  }),
 );
 
 export default router;
