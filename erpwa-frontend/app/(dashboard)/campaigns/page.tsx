@@ -11,8 +11,11 @@ import api from "@/lib/api";
 import { toast } from "react-toastify";
 
 interface Campaign {
-  id: string | number;
+  id: string;
+  name: string;
   type: string;
+  status: "draft" | "active" | "completed" | "paused" | "scheduled" | "failed" | "pending";
+  recipientCount: number;
   createdAt: string;
   [key: string]: unknown;
 }
@@ -117,7 +120,7 @@ export default function CampaignsPage() {
                   key={c.id}
                   campaign={{
                     ...c,
-                    type: c.type.toLowerCase(),
+                    type: c.type.toLowerCase() as "image" | "template",
                     createdAt: new Date(c.createdAt).toLocaleDateString(),
                   }}
                   index={i}
@@ -147,8 +150,8 @@ export default function CampaignsPage() {
                       key={page}
                       onClick={() => goToPage(page)}
                       className={`w-10 h-10 rounded-lg border transition-all ${currentPage === page
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "border-border bg-card hover:bg-secondary"
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "border-border bg-card hover:bg-secondary"
                         }`}
                     >
                       {page}
