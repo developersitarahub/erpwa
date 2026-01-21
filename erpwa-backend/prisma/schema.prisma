@@ -426,3 +426,23 @@ enum MediaType {
   document
   sticker
 }
+
+model WebhookLog {
+  id            String   @id @default(uuid())
+  vendorId      String?
+  eventType     String   // "message", "status", "verification", "unknown"
+  direction     String?  // "inbound" | "outbound_status"
+  phoneNumber   String?  // Customer phone number if available
+  messageId     String?  // WhatsApp message ID if available
+  status        String   // "success", "error", "ignored"
+  requestPayload Json    // Full incoming webhook payload
+  responseCode  Int?     // HTTP response code sent back
+  errorMessage  String?  // Error description if failed
+  processingMs  Int?     // How long it took to process
+  createdAt     DateTime @default(now())
+  
+  @@index([vendorId])
+  @@index([eventType])
+  @@index([status])
+  @@index([createdAt])
+}

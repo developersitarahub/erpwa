@@ -18,6 +18,7 @@ import {
   Image,
   Megaphone,
   Plug,
+  Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/context/sidebar-provider";
@@ -33,6 +34,7 @@ const menuItems = [
   { href: "/admin/categories", icon: Folder, label: "Categories" },
   { href: "/admin/gallery", icon: Image, label: "Gallery" },
   { href: "/admin/manage-team", icon: Users, label: "Manage Team" },
+  { href: "/admin/activity-logs", icon: Activity, label: "Activity Log" },
   { href: "/admin/setup", icon: Plug, label: "Setup" },
   { href: "/admin/settings", icon: Settings, label: "Settings" },
 ];
