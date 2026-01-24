@@ -366,7 +366,7 @@ router.post("/", async (req, res) => {
           });
         } catch {}
 
-        /* 🔥 EMIT REAL-TIME MESSAGE UPDATE */
+        /* 🔥 SAFE SOCKET EMIT (OPTIONAL) */
         try {
           const io = getIO();
           const fullMessage = await prisma.message.findUnique({
@@ -378,34 +378,25 @@ router.post("/", async (req, res) => {
             "📤 Emitting message:new to conversation:",
             conversation.id,
           );
+          console.log("📤 Message data:", {
+            id: fullMessage.id,
+            sender: "customer",
+            text: fullMessage.media.length ? undefined : fullMessage.content,
+          });
 
-          // Build properly structured message for frontend
-          const socketMessage = {
+          io.to(`conversation:${conversation.id}`).emit("message:new", {
             id: fullMessage.id,
             whatsappMessageId: fullMessage.whatsappMessageId,
-            replyToMessageId: fullMessage.replyToMessageId,
             sender: "customer",
             timestamp: fullMessage.createdAt.toISOString(),
-            status: fullMessage.status,
-          };
+            replyToMessageId: fullMessage.replyToMessageId,
 
-          // Add text or media fields based on message type
-          if (fullMessage.media && fullMessage.media.length > 0) {
-            socketMessage.mediaUrl = fullMessage.media[0].mediaUrl;
-            socketMessage.mimeType = fullMessage.media[0].mimeType;
-            if (fullMessage.media[0].caption) {
-              socketMessage.caption = fullMessage.media[0].caption;
-            }
-          } else {
-            socketMessage.text = fullMessage.content;
-          }
+            text: fullMessage.media.length ? undefined : fullMessage.content,
 
-          console.log("📤 Message data:", socketMessage);
-
-          io.to(`conversation:${conversation.id}`).emit(
-            "message:new",
-            socketMessage,
-          );
+            mediaUrl: fullMessage.media[0]?.mediaUrl,
+            mimeType: fullMessage.media[0]?.mimeType,
+            caption: fullMessage.media[0]?.caption,
+          });
           console.log("✅ Socket emit successful");
         } catch (socketErr) {
           console.error("❌ Socket emit failed:", socketErr.message);

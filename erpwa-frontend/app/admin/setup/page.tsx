@@ -5,21 +5,16 @@ import api from "@/lib/api";
 import { useAuth } from "@/context/authContext";
 import { toast } from "react-toastify";
 
-type WhatsAppStatus = "not_configured" | "connected" | "pending" | "error";
-
-declare global {
-  interface Window {
-    FB: any;
-    fbAsyncInit?: () => void;
-  }
-}
+type WhatsAppStatus = "not_configured" | "connected" | "error";
 
 export default function WhatsAppSetupPage() {
   const { user, loading: authLoading } = useAuth();
 
   const [pageLoading, setPageLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [status, setStatus] = useState<WhatsAppStatus>("not_configured");
+  const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [config, setConfig] = useState<{
@@ -28,29 +23,49 @@ export default function WhatsAppSetupPage() {
     whatsappVerifiedAt?: string;
   }>({});
 
-  /* ================= LOAD META SDK ================= */
+  const [form, setForm] = useState({
+    whatsappBusinessId: "",
+    whatsappPhoneNumberId: "",
+    whatsappAccessToken: "",
+  });
 
-  useEffect(() => {
-    if (window.FB) return;
+  /* ================= CONFIRM TOAST ================= */
 
-    window.fbAsyncInit = function () {
-      window.FB.init({
-        appId: "789605787480804", // META APP ID
-        cookie: true,
-        xfbml: false,
-        version: "v24.0",
-      });
-    };
+  function showConfirmToast(options: {
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  }) {
+    toast(
+      ({ closeToast }) => (
+        <div className="space-y-2">
+          <p className="font-medium">{options.title}</p>
+          <p className="text-sm text-muted-foreground">{options.message}</p>
 
-    const script = document.createElement("script");
-    script.src = "https://connect.facebook.net/en_US/sdk.js";
-    script.async = true;
-    document.body.appendChild(script);
+          <div className="flex gap-2 pt-2">
+            <button
+              onClick={() => {
+                options.onConfirm();
+                closeToast();
+              }}
+              className="bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-sm"
+            >
+              {options.confirmLabel}
+            </button>
 
-    return () => {
-      delete window.fbAsyncInit;
-    };
-  }, []);
+            <button
+              onClick={closeToast}
+              className="border border-border px-3 py-1.5 rounded-md text-sm"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ),
+      { autoClose: false, closeOnClick: false },
+    );
+  }
 
   /* ================= LOAD STATUS ================= */
 
@@ -60,9 +75,9 @@ export default function WhatsAppSetupPage() {
     async function loadStatus() {
       try {
         const res = await api.get("/vendor/whatsapp");
-        setStatus(res.data.whatsappStatus || "not_configured");
+        setStatus(res.data.whatsappStatus);
+        setError(res.data.whatsappLastError);
         setConfig(res.data);
-        setError(res.data.whatsappLastError || null);
       } catch {
         setStatus("not_configured");
       } finally {
@@ -73,89 +88,46 @@ export default function WhatsAppSetupPage() {
     loadStatus();
   }, [user]);
 
-  /* ================= EMBEDDED SIGNUP EVENTS ================= */
-
+  /* ================= PREFILL FORM ON EDIT ================= */
   useEffect(() => {
-    function onMessage(event: MessageEvent) {
-      if (
-        event.origin !== "https://www.facebook.com" &&
-        event.origin !== "https://web.facebook.com"
-      )
-        return;
+    if (!config.whatsappBusinessId || !config.whatsappPhoneNumberId) return;
 
-      try {
-        const data = JSON.parse(event.data as string);
+    setForm((prev) => ({
+      ...prev,
+      whatsappBusinessId: config.whatsappBusinessId!,
+      whatsappPhoneNumberId: config.whatsappPhoneNumberId!,
+      whatsappAccessToken: "", // never prefill token
+    }));
+  }, [config.whatsappBusinessId, config.whatsappPhoneNumberId]);
 
-        if (data.type !== "WA_EMBEDDED_SIGNUP") return;
+  /* ================= SUBMIT ================= */
 
-        if (data.event === "FINISH") {
-          api.post("/vendor/whatsapp/embedded/session", {
-            wabaId: data.data.waba_id,
-            phoneNumberId: data.data.phone_number_id,
-          });
-        }
-
-        if (data.event === "CANCEL") {
-          setSaving(false);
-          setError("WhatsApp setup was cancelled");
-        }
-
-        if (data.event === "ERROR") {
-          setSaving(false);
-          setError("WhatsApp setup failed. Please try again.");
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-
-  /* ================= CONNECT WHATSAPP ================= */
-
-  function connectWhatsApp() {
-    if (saving) return;
-
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
     setSaving(true);
     setError(null);
 
-    window.FB.login(
-      (response: any) => {
-        const code = response?.authResponse?.code;
+    try {
+      await api.post("/vendor/whatsapp/setup", form);
+      const res = await api.get("/vendor/whatsapp");
 
-        if (!code) {
-          setSaving(false);
-          return;
-        }
+      setConfig(res.data);
+      setStatus("connected");
+      setIsEditing(false);
 
-        api
-          .post("/vendor/whatsapp/embedded/complete", { code })
-          .then(async () => {
-            toast.success("WhatsApp connected successfully");
-            const res = await api.get("/vendor/whatsapp");
-            setConfig(res.data);
-            setStatus("connected");
-          })
-          .catch((err) => {
-            setStatus("error");
-            setError(
-              err.response?.data?.message || "WhatsApp connection failed",
-            );
-          })
-          .finally(() => setSaving(false));
-      },
-      {
-        config_id: "1950348145577755", // EMBEDDED SIGNUP CONFIG ID
-        response_type: "code",
-        override_default_response_type: true,
-        extras: {
-          version: "v3",
-          featureType: "whatsapp_business_app_onboarding",
-        },
-      },
-    );
+      setForm({
+        whatsappBusinessId: "",
+        whatsappPhoneNumberId: "",
+        whatsappAccessToken: "",
+      });
+
+      toast.success("WhatsApp configuration updated successfully");
+    } catch (err: any) {
+      setStatus("error");
+      setError(err.response?.data?.message || "Setup failed");
+    } finally {
+      setSaving(false);
+    }
   }
 
   /* ================= GUARDS ================= */
@@ -176,8 +148,15 @@ export default function WhatsAppSetupPage() {
 
   return (
     <div className="max-w-xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">WhatsApp Business</h1>
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-semibold">WhatsApp Business</h1>
+        <p className="text-sm text-muted-foreground">
+          Manage your WhatsApp Business integration.
+        </p>
+      </div>
 
+      {/* Status */}
       <div>
         {status === "connected" && (
           <span className="rounded-full bg-primary/10 text-primary px-3 py-1 text-sm">
@@ -191,40 +170,128 @@ export default function WhatsAppSetupPage() {
         )}
         {status === "not_configured" && (
           <span className="rounded-full bg-muted text-muted-foreground px-3 py-1 text-sm">
-            Not connected
+            Not configured
           </span>
         )}
       </div>
 
-      {status !== "connected" && (
-        <div className="border rounded-lg p-5 space-y-4">
+      {/* ================= CONNECTED VIEW ================= */}
+      {status === "connected" && !isEditing && (
+        <div className="bg-card border border-border rounded-lg p-5 space-y-4">
+          <p className="font-medium text-primary">
+            WhatsApp is currently connected
+          </p>
+
+          <div className="text-sm space-y-1">
+            <div>
+              <span className="text-muted-foreground">Business ID:</span>{" "}
+              {config.whatsappBusinessId}
+            </div>
+            <div>
+              <span className="text-muted-foreground">Phone Number ID:</span>{" "}
+              {config.whatsappPhoneNumberId}
+            </div>
+            {config.whatsappVerifiedAt && (
+              <div>
+                <span className="text-muted-foreground">Connected on:</span>{" "}
+                {new Date(config.whatsappVerifiedAt).toLocaleString()}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={() =>
+              showConfirmToast({
+                title: "Edit WhatsApp configuration?",
+                message:
+                  "Reconfiguring will replace the existing connection and may interrupt message delivery.",
+                confirmLabel: "Yes, edit",
+                onConfirm: () => setIsEditing(true),
+              })
+            }
+            className="border border-border rounded-md px-4 py-2 text-sm hover:bg-muted"
+          >
+            Reconfigure
+          </button>
+        </div>
+      )}
+
+      {/* ================= FORM ================= */}
+      {(status !== "connected" || isEditing) && (
+        <form
+          onSubmit={handleSubmit}
+          className="bg-card border border-border rounded-lg p-5 space-y-4"
+        >
+          {isEditing && (
+            <p className="text-xs text-muted-foreground">
+              Existing values are pre-filled. Access token must be re-entered.
+            </p>
+          )}
+
+          {/* Business ID */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium">
+              WhatsApp Business Account ID
+            </label>
+            <p className="text-xs text-muted-foreground">
+              Meta Business Manager → WhatsApp Accounts
+            </p>
+            <input
+              className="w-full bg-input border border-border rounded-md px-3 py-2"
+              value={form.whatsappBusinessId}
+              onChange={(e) =>
+                setForm({ ...form, whatsappBusinessId: e.target.value })
+              }
+              required
+            />
+          </div>
+
+          {/* Phone Number ID */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Phone Number ID</label>
+            <p className="text-xs text-muted-foreground">
+              Linked WhatsApp phone number identifier
+            </p>
+            <input
+              className="w-full bg-input border border-border rounded-md px-3 py-2"
+              value={form.whatsappPhoneNumberId}
+              onChange={(e) =>
+                setForm({ ...form, whatsappPhoneNumberId: e.target.value })
+              }
+              required
+            />
+          </div>
+
+          {/* Access Token */}
+          <div className="space-y-1">
+            <label className="text-sm font-medium">Access Token</label>
+            <p className="text-xs text-muted-foreground">
+              Permanent token with WhatsApp permissions (stored securely)
+            </p>
+            <textarea
+              className="w-full bg-input border border-border rounded-md px-3 py-2"
+              value={form.whatsappAccessToken}
+              onChange={(e) =>
+                setForm({ ...form, whatsappAccessToken: e.target.value })
+              }
+              rows={4}
+              required
+            />
+          </div>
+
           {error && (
-            <div className="text-sm text-destructive bg-destructive/10 rounded p-2">
+            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
               {error}
             </div>
           )}
 
           <button
-            onClick={connectWhatsApp}
             disabled={saving}
             className="w-full bg-primary text-primary-foreground rounded-md py-2 font-medium disabled:opacity-50"
           >
-            {saving ? "Connecting…" : "Connect WhatsApp"}
+            {saving ? "Verifying…" : "Verify & Save"}
           </button>
-        </div>
-      )}
-
-      {status === "connected" && (
-        <div className="border rounded-lg p-5 space-y-2">
-          <div>Business ID: {config.whatsappBusinessId}</div>
-          <div>Phone Number ID: {config.whatsappPhoneNumberId}</div>
-          {config.whatsappVerifiedAt && (
-            <div>
-              Connected on:{" "}
-              {new Date(config.whatsappVerifiedAt).toLocaleString()}
-            </div>
-          )}
-        </div>
+        </form>
       )}
     </div>
   );
