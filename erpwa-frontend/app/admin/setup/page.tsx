@@ -6,6 +6,7 @@ import { useAuth } from "@/context/authContext";
 import { toast } from "react-toastify";
 
 type WhatsAppStatus = "not_configured" | "connected" | "error";
+type SetupMethod = "embedded" | "manual";
 
 export default function WhatsAppSetupPage() {
   const { user, loading: authLoading } = useAuth();
@@ -16,6 +17,7 @@ export default function WhatsAppSetupPage() {
   const [status, setStatus] = useState<WhatsAppStatus>("not_configured");
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [setupMethod, setSetupMethod] = useState<SetupMethod>("embedded");
 
   const [config, setConfig] = useState<{
     whatsappBusinessId?: string;
@@ -63,7 +65,7 @@ export default function WhatsAppSetupPage() {
           </div>
         </div>
       ),
-      { autoClose: false, closeOnClick: false }
+      { autoClose: false, closeOnClick: false },
     );
   }
 
@@ -122,11 +124,87 @@ export default function WhatsAppSetupPage() {
       });
 
       toast.success("WhatsApp configuration updated successfully");
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string } } };
       setStatus("error");
-      setError(err.response?.data?.message || "Setup failed");
+      setError(error.response?.data?.message || "Setup failed");
     } finally {
       setSaving(false);
+    }
+  }
+
+  /* ================= EMBEDDED SIGNUP ================= */
+
+  async function handleEmbeddedSignup() {
+    try {
+      // Get the embedded signup URL from backend
+      const res = await api.get("/vendor/whatsapp/embedded-signup-url");
+      const { signupUrl } = res.data;
+
+      // Open Meta's embedded signup in a popup
+      const width = 600;
+      const height = 700;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+
+      const popup = window.open(
+        signupUrl,
+        "MetaEmbeddedSignup",
+        `width=${width},height=${height},left=${left},top=${top}`,
+      );
+
+      // Listen for the OAuth callback
+      const handleMessage = async (event: MessageEvent) => {
+        // Verify origin for security
+        if (event.origin !== window.location.origin) return;
+
+        if (event.data.type === "whatsapp-embedded-signup") {
+          const { code } = event.data;
+
+          if (code) {
+            setSaving(true);
+            try {
+              // Exchange code for access token and complete setup
+              await api.post("/vendor/whatsapp/embedded-setup", { code });
+              const res = await api.get("/vendor/whatsapp");
+
+              setConfig(res.data);
+              setStatus("connected");
+              toast.success(
+                "WhatsApp connected successfully via embedded signup!",
+              );
+            } catch (err: any) {
+              setStatus("error");
+              const error = err as {
+                response?: { data?: { message?: string } };
+              };
+              setError(
+                error.response?.data?.message || "Embedded setup failed",
+              );
+            } finally {
+              setSaving(false);
+            }
+          }
+
+          popup?.close();
+          window.removeEventListener("message", handleMessage);
+        }
+      };
+
+      window.addEventListener("message", handleMessage);
+
+      // Clean up if popup is closed manually
+      const checkPopup = setInterval(() => {
+        if (popup?.closed) {
+          clearInterval(checkPopup);
+          window.removeEventListener("message", handleMessage);
+        }
+      }, 500);
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { message?: string } } };
+      setError(
+        error.response?.data?.message || "Failed to initiate embedded signup",
+      );
     }
   }
 
@@ -147,7 +225,7 @@ export default function WhatsAppSetupPage() {
   /* ================= UI ================= */
 
   return (
-    <div className="max-w-xl mx-auto p-6 space-y-6">
+    <div className="max-w-2xl mx-auto p-6 space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-semibold">WhatsApp Business</h1>
@@ -216,82 +294,199 @@ export default function WhatsAppSetupPage() {
         </div>
       )}
 
-      {/* ================= FORM ================= */}
+      {/* ================= SETUP METHOD SELECTION ================= */}
       {(status !== "connected" || isEditing) && (
-        <form
-          onSubmit={handleSubmit}
-          className="bg-card border border-border rounded-lg p-5 space-y-4"
-        >
-          {isEditing && (
-            <p className="text-xs text-muted-foreground">
-              Existing values are pre-filled. Access token must be re-entered.
-            </p>
-          )}
-
-          {/* Business ID */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">
-              WhatsApp Business Account ID
-            </label>
-            <p className="text-xs text-muted-foreground">
-              Meta Business Manager → WhatsApp Accounts
-            </p>
-            <input
-              className="w-full bg-input border border-border rounded-md px-3 py-2"
-              value={form.whatsappBusinessId}
-              onChange={(e) =>
-                setForm({ ...form, whatsappBusinessId: e.target.value })
-              }
-              required
-            />
+        <div className="space-y-4">
+          {/* Setup Method Tabs */}
+          <div className="bg-card border border-border rounded-lg p-1 flex gap-1">
+            <button
+              onClick={() => setSetupMethod("embedded")}
+              className={`flex-1 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                setupMethod === "embedded"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <span>🚀</span>
+                <span>Embedded Signup</span>
+                <span className="text-xs opacity-75">(Recommended)</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setSetupMethod("manual")}
+              className={`flex-1 px-4 py-2.5 rounded-md text-sm font-medium transition-colors ${
+                setupMethod === "manual"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <span>⚙️</span>
+                <span>Manual Setup</span>
+              </div>
+            </button>
           </div>
 
-          {/* Phone Number ID */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Phone Number ID</label>
-            <p className="text-xs text-muted-foreground">
-              Linked WhatsApp phone number identifier
-            </p>
-            <input
-              className="w-full bg-input border border-border rounded-md px-3 py-2"
-              value={form.whatsappPhoneNumberId}
-              onChange={(e) =>
-                setForm({ ...form, whatsappPhoneNumberId: e.target.value })
-              }
-              required
-            />
-          </div>
+          {/* ================= EMBEDDED SIGNUP ================= */}
+          {setupMethod === "embedded" && (
+            <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+              <div className="space-y-2">
+                <h3 className="font-semibold text-lg">Quick Setup with Meta</h3>
+                <p className="text-sm text-muted-foreground">
+                  Connect your WhatsApp Business account in just a few clicks
+                  using Meta&apos;s secure OAuth flow.
+                </p>
+              </div>
 
-          {/* Access Token */}
-          <div className="space-y-1">
-            <label className="text-sm font-medium">Access Token</label>
-            <p className="text-xs text-muted-foreground">
-              Permanent token with WhatsApp permissions (stored securely)
-            </p>
-            <textarea
-              className="w-full bg-input border border-border rounded-md px-3 py-2"
-              value={form.whatsappAccessToken}
-              onChange={(e) =>
-                setForm({ ...form, whatsappAccessToken: e.target.value })
-              }
-              rows={4}
-              required
-            />
-          </div>
+              <div className="bg-muted/50 border border-border rounded-lg p-4 space-y-2">
+                <p className="text-sm font-medium">✨ Benefits:</p>
+                <ul className="text-sm text-muted-foreground space-y-1 ml-4">
+                  <li>• No need to manually copy credentials</li>
+                  <li>• Secure OAuth authentication</li>
+                  <li>• Automatic token management</li>
+                  <li>• Faster setup process</li>
+                </ul>
+              </div>
 
-          {error && (
-            <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-2">
-              {error}
+              {error && (
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-3">
+                  {error}
+                </div>
+              )}
+
+              <button
+                onClick={handleEmbeddedSignup}
+                disabled={saving}
+                className="w-full bg-primary text-primary-foreground rounded-md py-3 font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <span className="animate-spin">⏳</span>
+                    <span>Connecting...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>🔗</span>
+                    <span>Connect with Meta</span>
+                  </>
+                )}
+              </button>
+
+              <p className="text-xs text-muted-foreground text-center">
+                You&apos;ll be redirected to Meta to authorize the connection
+              </p>
             </div>
           )}
 
-          <button
-            disabled={saving}
-            className="w-full bg-primary text-primary-foreground rounded-md py-2 font-medium disabled:opacity-50"
-          >
-            {saving ? "Verifying…" : "Verify & Save"}
-          </button>
-        </form>
+          {/* ================= MANUAL SETUP FORM ================= */}
+          {setupMethod === "manual" && (
+            <form
+              onSubmit={handleSubmit}
+              className="bg-card border border-border rounded-lg p-6 space-y-4"
+            >
+              <div className="space-y-2">
+                <h3 className="font-semibold text-lg">Manual Configuration</h3>
+                <p className="text-sm text-muted-foreground">
+                  Enter your WhatsApp Business credentials manually from Meta
+                  Business Manager.
+                </p>
+              </div>
+
+              {isEditing && (
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+                  <p className="text-xs text-amber-700 dark:text-amber-300">
+                    ⚠️ Existing values are pre-filled. Access token must be
+                    re-entered for security.
+                  </p>
+                </div>
+              )}
+
+              {/* Business ID */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">
+                  WhatsApp Business Account ID
+                </label>
+                <p className="text-xs text-muted-foreground">
+                  Found in Meta Business Manager → WhatsApp Accounts
+                </p>
+                <input
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={form.whatsappBusinessId}
+                  onChange={(e) =>
+                    setForm({ ...form, whatsappBusinessId: e.target.value })
+                  }
+                  placeholder="123456789012345"
+                  required
+                />
+              </div>
+
+              {/* Phone Number ID */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Phone Number ID</label>
+                <p className="text-xs text-muted-foreground">
+                  Your WhatsApp phone number identifier from Meta
+                </p>
+                <input
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  value={form.whatsappPhoneNumberId}
+                  onChange={(e) =>
+                    setForm({ ...form, whatsappPhoneNumberId: e.target.value })
+                  }
+                  placeholder="987654321098765"
+                  required
+                />
+              </div>
+
+              {/* Access Token */}
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Access Token</label>
+                <p className="text-xs text-muted-foreground">
+                  Permanent token with WhatsApp permissions (stored securely
+                  encrypted)
+                </p>
+                <textarea
+                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary font-mono"
+                  value={form.whatsappAccessToken}
+                  onChange={(e) =>
+                    setForm({ ...form, whatsappAccessToken: e.target.value })
+                  }
+                  rows={4}
+                  placeholder="EAAxxxxxxxxxxxxxxxxxxxxxxxxx..."
+                  required
+                />
+              </div>
+
+              {error && (
+                <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded p-3">
+                  {error}
+                </div>
+              )}
+
+              <button
+                disabled={saving}
+                className="w-full bg-primary text-primary-foreground rounded-md py-3 font-medium disabled:opacity-50 hover:bg-primary/90 transition-colors"
+              >
+                {saving ? "Verifying…" : "Verify & Save"}
+              </button>
+
+              <div className="bg-muted/50 border border-border rounded-lg p-3">
+                <p className="text-xs text-muted-foreground">
+                  <strong>Need help?</strong> Follow our{" "}
+                  <a
+                    href="https://developers.facebook.com/docs/whatsapp/business-management-api/get-started"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-primary hover:underline"
+                  >
+                    setup guide
+                  </a>{" "}
+                  to get your credentials from Meta Business Manager.
+                </p>
+              </div>
+            </form>
+          )}
+        </div>
       )}
     </div>
   );
