@@ -35,5 +35,9 @@
     "eslint-config-next": "16.0.10",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "overrides": {
+    "glob": "^10.3.10",
+    "rimraf": "^4.4.1"
   }
 }
