@@ -1,5 +1,5 @@
 import "dotenv/config";
-import express from "express";
+import express from "express"; // Restart trigger
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import http from "http";
@@ -13,7 +13,6 @@ import whatsappWebhookRoutes from "./routes/whatsappWebhook.route.js";
 import whatsappTestRoutes from "./routes/whatsappTest.route.js";
 import vendorTemplateRoutes from "./routes/vendorTemplate.route.js";
 import vendorWhatsappTemplateSendRoutes from "./routes/vendorWhatsappTemplateSend.route.js";
-import workflowRoutes from "./routes/workflow.routes.js";
 import inboxRoutes from "./routes/inbox.route.js";
 import categoryRoutes from "./routes/category.routes.js";
 import leadRoutes from "./routes/lead.routes.js";
@@ -28,6 +27,7 @@ import testUploadRoute from "./routes/testUpload.route.js";
 import WhatsappNumberCheckRoute from "./routes/whatsappNumberCheck.route.js";
 // import webhookLogsRoutes from "./routes/webhookLogs.route.js";
 import activityLogsRoutes from "./routes/activityLogs.route.js";
+import whatsappFlowsRoutes from "./routes/whatsappFlows.route.js";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -43,7 +43,7 @@ app.use(
   cors({
     origin: allowedOrigins,
     credentials: true,
-  }),
+  })
 );
 
 app.set("etag", false);
@@ -58,7 +58,6 @@ app.use("/api/vendor", vendorWhatsappRoutes);
 app.use("/api/vendor/whatsapp", vendorWhatsappMessageRoutes);
 app.use("/api/vendor/templates", vendorTemplateRoutes);
 app.use("/api/vendor/whatsapp/template", vendorWhatsappTemplateSendRoutes);
-app.use("/api/workflow", workflowRoutes);
 app.use("/api/inbox", inboxRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/leads", leadRoutes);
@@ -72,6 +71,7 @@ app.use("/api/activity-logs", activityLogsRoutes);
 app.use("/webhook", whatsappWebhookRoutes);
 app.use("/test", testUploadRoute);
 app.use("/api/whatsapp", WhatsappNumberCheckRoute);
+app.use("/api/whatsapp/flows", whatsappFlowsRoutes);
 
 /* ================= SERVER START ================= */
 const PORT = process.env.PORT || 5000;

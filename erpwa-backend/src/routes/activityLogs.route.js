@@ -36,23 +36,21 @@ router.get("/", authenticate, async (req, res) => {
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const take = parseInt(limit);
 
-        // Build filter conditions
+        // Build filter conditions based on role
         let where = {};
 
-        if (role === "owner" || role === "vendor_owner") {
-            // Owner and vendor_owner see everything
+        if (role === "owner") {
+            // Global owner sees ALL logs from ALL vendors
             where = {};
+        } else if (role === "vendor_owner" && vendorId) {
+            // Vendor owner sees only their vendor's logs (including system logs for their vendor)
+            where = { vendorId: vendorId };
+        } else if (role === "vendor_admin" && vendorId) {
+            // Vendor admin sees only their vendor's logs (no null vendorId system logs)
+            where = { vendorId: vendorId };
         } else {
-            // Vendor admin sees their vendor's logs + system logs (null vendorId)
-            const orConditions = [{ vendorId: null }]; // Always include system logs
-
-            if (vendorId) {
-                orConditions.push({ vendorId: vendorId });
-            }
-
-            where = {
-                OR: orConditions,
-            };
+            // Fallback: no logs visible if no vendorId
+            where = { id: "impossible-match" };
         }
 
         if (status && status !== "all") {

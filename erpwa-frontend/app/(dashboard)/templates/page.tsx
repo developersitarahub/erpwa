@@ -32,12 +32,14 @@ import {
   AlertTriangle,
   Users,
   Eye,
+  ShoppingBag,
 } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "react-toastify";
 import { cn } from "@/lib/utils";
 import { leadsAPI } from "@/lib/leadsApi";
 import { Lead } from "@/lib/types";
+import CatalogTemplateModal from "@/components/templates/CatalogTemplateModal";
 
 const formatError = (error: any, defaultMsg: string) => {
   const errorData = error.response?.data;
@@ -122,6 +124,9 @@ export default function TemplatesPage() {
   const [buttons, setButtons] = useState<
     { type: string; text: string; value?: string }[]
   >([]);
+
+  // --- Catalog Template Modal State ---
+  const [showCatalogModal, setShowCatalogModal] = useState(false);
 
   // --- Send Modal State ---
   const [showSendModal, setShowSendModal] = useState(false);
@@ -337,6 +342,21 @@ export default function TemplatesPage() {
       setShowCreateModal(false);
     } catch (error: any) {
       toast.error(formatError(error, "Failed to save template"));
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // --- Catalog Template Handler ---
+  const handleCatalogTemplateSubmit = async (templateData: any) => {
+    try {
+      setIsCreating(true);
+      await api.post("/vendor/templates", templateData);
+      toast.success("Catalog template created successfully!");
+      fetchTemplates();
+      setShowCatalogModal(false);
+    } catch (error: any) {
+      toast.error(formatError(error, "Failed to create catalog template"));
     } finally {
       setIsCreating(false);
     }
@@ -569,12 +589,20 @@ export default function TemplatesPage() {
               be used for bulk marketing and utility messaging.
             </p>
           </div>
-          <Button
-            onClick={openCreateModal}
-            className="shadow-lg shadow-green-500/20 bg-green-600 hover:bg-green-700 text-white transition-all hover:scale-105 active:scale-95"
-          >
-            <Plus className="w-4 h-4 mr-2" /> New Template
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={openCreateModal}
+              className="shadow-lg shadow-green-500/20 bg-green-600 hover:bg-green-700 text-white transition-all hover:scale-105 active:scale-95"
+            >
+              <Plus className="w-4 h-4 mr-2" /> New Template
+            </Button>
+            <Button
+              onClick={() => setShowCatalogModal(true)}
+              className="shadow-lg shadow-blue-500/20 bg-blue-600 hover:bg-blue-700 text-white transition-all hover:scale-105 active:scale-95"
+            >
+              <ShoppingBag className="w-4 h-4 mr-2" /> Catalog Template
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -1790,6 +1818,13 @@ export default function TemplatesPage() {
           </Card>
         </div>
       )}
+
+      {/* CATALOG TEMPLATE MODAL */}
+      <CatalogTemplateModal
+        isOpen={showCatalogModal}
+        onClose={() => setShowCatalogModal(false)}
+        onSubmit={handleCatalogTemplateSubmit}
+      />
     </div>
   );
 }

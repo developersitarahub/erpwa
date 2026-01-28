@@ -133,6 +133,24 @@ export const createUser = async (req, res) => {
             });
         }
 
+        // 📝 Log user creation activity
+        await prisma.activityLog.create({
+            data: {
+                event: "user_created",
+                type: "system",
+                status: "success",
+                metadata: {
+                    userId: user.id,
+                    userName: user.name,
+                    userEmail: user.email,
+                    userRole: user.role,
+                    createdBy: req.user.name,
+                    createdById: req.user.id,
+                },
+                vendorId: req.user.vendorId, // 🔒 Associate with vendor for proper filtering
+            },
+        });
+
         res.status(201).json(user);
     } catch (error) {
         console.error("Create user error:", error);

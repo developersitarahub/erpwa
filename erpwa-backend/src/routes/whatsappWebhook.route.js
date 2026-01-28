@@ -4,10 +4,7 @@ import { getIO } from "../socket.js";
 import { uploadToS3 } from "../services/media.service.js";
 import { downloadWhatsappMedia } from "../services/whatsappMedia.service.js";
 import { decrypt } from "../utils/encryption.js";
-import {
-  checkAndStartWorkflow,
-  handleWorkflowResponse,
-} from "../services/workflowEngine.service.js";
+import { handleFlowResponse } from "../utils/flowResponseHandler.js";
 
 const router = express.Router();
 
@@ -52,12 +49,7 @@ async function logActivity({
 
     // Check if we already have a log for this WAMID to inherit data
     // 🕒 Race Condition Mitigation: Wait slightly to increase chance that "Sent" log is written
-    if (
-      status !== "sent" &&
-      status !== "received" &&
-      status !== "created" &&
-      status !== "started"
-    ) {
+    if (status !== "sent" && status !== "received" && status !== "created" && status !== "started") {
       await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
@@ -67,9 +59,7 @@ async function logActivity({
       existingLog = await prisma.activityLog.findFirst({
         where: { messageId: messageId },
       });
-      console.log(
-        `🔎 Lookup 1 for messageId: ${messageId} -> Found: ${!!existingLog}`,
-      );
+      console.log(`🔎 Lookup 1 for messageId: ${messageId} -> Found: ${!!existingLog}`);
 
       // Attempt 2: If not found, wait and try again (Race Condition Handling)
       if (!existingLog) {
@@ -78,9 +68,7 @@ async function logActivity({
         existingLog = await prisma.activityLog.findFirst({
           where: { messageId: messageId },
         });
-        console.log(
-          `🔎 Lookup 2 for messageId: ${messageId} -> Found: ${!!existingLog}`,
-        );
+        console.log(`🔎 Lookup 2 for messageId: ${messageId} -> Found: ${!!existingLog}`);
       }
 
       if (existingLog) {
@@ -94,13 +82,9 @@ async function logActivity({
         if (!messageType) messageType = existingLog.type;
       }
 
-      // Always check Message table to resolve campaign details if not fully certain
+      // Always check Message table to resolve campaign details if not fully certain 
       // (or if we want to ensure "Campaign" type is reflected)
-      if (
-        !messageType ||
-        !dbConversationId ||
-        !messageType.includes("Campaign")
-      ) {
+      if (!messageType || !dbConversationId || !messageType.includes("Campaign")) {
         try {
           const message = await prisma.message.findFirst({
             where: { whatsappMessageId: messageId },
@@ -108,19 +92,17 @@ async function logActivity({
               campaign: true, // ✅ Include campaign to determine type
               conversation: {
                 select: {
-                  lead: { select: { leadCategory: true, categoryId: true } },
-                },
-              },
-            },
+                  lead: { select: { leadCategory: true, categoryId: true } }
+                }
+              }
+            }
           });
 
           if (message) {
             // Determine type based on Campaign
             if (message.campaign) {
-              if (message.campaign.type === "IMAGE")
-                messageType = "Image Campaign";
-              else if (message.campaign.type === "TEMPLATE")
-                messageType = "Template Campaign";
+              if (message.campaign.type === "IMAGE") messageType = "Image Campaign";
+              else if (message.campaign.type === "TEMPLATE") messageType = "Template Campaign";
               else messageType = "Campaign";
             } else if (!messageType) {
               // Only use message type if we didn't have one and not campaign
@@ -136,7 +118,7 @@ async function logActivity({
               }
             }
           }
-        } catch (err) {}
+        } catch (err) { }
       }
     }
 
@@ -147,33 +129,10 @@ async function logActivity({
 
     // 3. Determine Final Status
     let finalStatus = status;
-    if (
-      error &&
-      ![
-        "read",
-        "delivered",
-        "sent",
-        "received",
-        "created",
-        "started",
-        "completed",
-      ].includes(status)
-    ) {
+    if (error && !["read", "delivered", "sent", "received", "created", "started", "completed"].includes(status)) {
       finalStatus = "failed";
     }
-    const errorData =
-      error &&
-      ![
-        "read",
-        "delivered",
-        "sent",
-        "received",
-        "created",
-        "started",
-        "completed",
-      ].includes(finalStatus)
-        ? error
-        : null;
+    const errorData = error && !["read", "delivered", "sent", "received", "created", "started", "completed"].includes(finalStatus) ? error : null;
 
     // 4. Upsert Logic
     const dataPayload = {
@@ -200,11 +159,7 @@ async function logActivity({
         where: { id: existingLog.id },
         data: dataPayload,
       });
-      console.log("📝 Activity Log Updated:", {
-        messageId,
-        status: finalStatus,
-        type: messageType,
-      });
+      console.log("📝 Activity Log Updated:", { messageId, status: finalStatus, type: messageType });
     } else {
       // ✅ CREATE new log
       activityLog = await prisma.activityLog.create({
@@ -213,11 +168,7 @@ async function logActivity({
           messageId, // Ensure messageId is set for create
         },
       });
-      console.log("✅ Activity Log Created:", {
-        messageId,
-        status: finalStatus,
-        type: messageType,
-      });
+      console.log("✅ Activity Log Created:", { messageId, status: finalStatus, type: messageType });
     }
 
     // 🔥 Emit real-time update
@@ -227,7 +178,7 @@ async function logActivity({
         ...activityLog,
         createdAt: activityLog.createdAt.toISOString(),
       });
-    } catch {}
+    } catch { }
 
     return activityLog;
   } catch (err) {
@@ -354,19 +305,14 @@ router.post("/", async (req, res) => {
       for (const msg of value.messages) {
         phoneNumber = msg.from;
         messageId = msg.id;
-        console.log(
-          "📨 Processing message from:",
-          phoneNumber,
-          "type:",
-          msg.type,
-        );
+        console.log("📨 Processing message from:", phoneNumber, "type:", msg.type);
 
         // ✅ WhatsApp message timestamp (seconds → ms)
         const inboundAt = new Date(Number(msg.timestamp) * 1000);
 
         // ✅ 24 hour window from LAST inbound message
         const sessionExpiresAt = new Date(
-          inboundAt.getTime() + 24 * 60 * 60 * 1000,
+          inboundAt.getTime() + 24 * 60 * 60 * 1000
         );
 
         const whatsappMessageId = msg.id;
@@ -389,7 +335,7 @@ router.post("/", async (req, res) => {
             processingMs: Date.now() - startTime,
             error: "Duplicate message",
             responseCode: 200,
-            type: msg.type,
+            type: msg.type
           });
           continue;
         }
@@ -447,17 +393,25 @@ router.post("/", async (req, res) => {
           content = msg.text.body;
         } else if (msg.type === "button") {
           content = msg.button.text;
-        } else if (msg.type === "interactive") {
-          // Handle replies to List Messages or Button Messages
-          const interactive = msg.interactive;
-          if (interactive.type === "list_reply") {
-            content = interactive.list_reply.title;
-          } else if (interactive.type === "button_reply") {
-            content = interactive.button_reply.title;
-            // Also store ID if needed, but 'content' helps with workflow matching
-          } else {
-            content = "[interactive]";
+        } else if (msg.type === "interactive" && msg.interactive.type === "nfm_reply") {
+          // Handle Flow Response JSON
+          try {
+            const responseJson = JSON.parse(msg.interactive.nfm_reply.response_json || '{}');
+            const flowToken = msg.interactive.nfm_reply.flow_token || 'Unknown Flow';
+
+            // Format response as readable text
+            const formattedData = Object.entries(responseJson)
+              .map(([key, val]) => `${key}: ${val}`)
+              .join(', ');
+
+            content = `📋 Flow Response (${flowToken}):\n${formattedData || 'No data'}`;
+          } catch (e) {
+            content = "[Flow Response - Invalid JSON]";
           }
+        } else if (msg.type === "interactive" && msg.interactive.type === "button_reply") {
+          content = `[Button] ${msg.interactive.button_reply.title}`;
+        } else if (msg.type === "interactive" && msg.interactive.type === "list_reply") {
+          content = `[List] ${msg.interactive.list_reply.title}`;
         } else {
           content = `[${msg.type} message]`;
         }
@@ -480,25 +434,8 @@ router.post("/", async (req, res) => {
           },
         });
 
-        // ============================================
-        // 🚀 WORKFLOW ENGINE INTEGRATION
-        // ============================================
-        try {
-          // 1. Check if user is already in a workflow session
-          const isSessionHandled = await handleWorkflowResponse(
-            vendor.id,
-            conversation.id,
-            inboundMessage,
-          );
-
-          if (!isSessionHandled) {
-            // 2. If not, check if message triggers a NEW workflow
-            // Content variable is already extracted above
-            await checkAndStartWorkflow(vendor.id, conversation.id, content);
-          }
-        } catch (wfError) {
-          console.error("Workflow Error:", wfError);
-        }
+        // 🎯 Handle Flow Responses (if this is an interactive Flow submission)
+        await handleFlowResponse(msg, vendor, conversation);
 
         // Handle Media download logic (removed for brevity, but assumed unchanged if not shown)
         if (
@@ -512,7 +449,7 @@ router.post("/", async (req, res) => {
 
             const { buffer, mimeType, fileName } = await downloadWhatsappMedia(
               mediaId,
-              accessToken,
+              accessToken
             );
 
             const extension =
@@ -551,7 +488,7 @@ router.post("/", async (req, res) => {
           io.to(`vendor:${vendor.id}`).emit("inbox:update", {
             conversationId: conversation.id,
           });
-        } catch {}
+        } catch { }
 
         /* 🔥 SAFE SOCKET EMIT (OPTIONAL) */
         try {
@@ -572,7 +509,7 @@ router.post("/", async (req, res) => {
             mimeType: fullMessage.media[0]?.mimeType,
             caption: fullMessage.media[0]?.caption,
           });
-        } catch (socketErr) {}
+        } catch (socketErr) { }
 
         // Log successful message processing
         await logActivity({
@@ -587,7 +524,7 @@ router.post("/", async (req, res) => {
           direction: "inbound",
           responseCode: 200,
           processingMs: Date.now() - startTime,
-          type: msg.type,
+          type: msg.type
         });
       }
     }
@@ -647,10 +584,7 @@ router.post("/", async (req, res) => {
             direction: "outbound_status",
             processingMs: Date.now() - startTime,
             responseCode: 200,
-            error:
-              waState === "failed" && waStatus.errors?.length
-                ? waStatus.errors[0].message
-                : null,
+            error: (waState === "failed" && waStatus.errors?.length) ? waStatus.errors[0].message : null
           });
           continue;
         }
@@ -702,9 +636,9 @@ router.post("/", async (req, res) => {
             {
               whatsappMessageId,
               status: waState,
-            },
+            }
           );
-        } catch {}
+        } catch { }
       }
     }
 
@@ -745,7 +679,7 @@ router.post("/", async (req, res) => {
         payload: templateUpdate,
         responseCode: 200,
         processingMs: Date.now() - startTime,
-        direction: "inbound",
+        direction: "inbound"
       });
     }
 
@@ -762,7 +696,7 @@ router.post("/", async (req, res) => {
       responseCode: 200,
       error: err.message || "Unknown error",
       processingMs: Date.now() - startTime,
-      type: "webhook",
+      type: "webhook"
     });
 
     return res.sendStatus(200); // 👈 NEVER fail webhook

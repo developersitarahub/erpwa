@@ -1,13 +1,11 @@
 import * as Auth from "../services/auth/auth.service.js";
 
-const isProduction = process.env.NODE_ENV === "production";
-
 const COOKIE_OPTIONS = {
   httpOnly: true,
-  sameSite: isProduction ? "none" : "lax",
-  secure: isProduction,
+  sameSite: "lax",
+  secure: false, // true in production (HTTPS)
   path: "/",
-  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 Days
+  maxAge: 7 * 24 * 60 * 60 * 1000, // ✅ REQUIRED
 };
 
 /* ================= LOGIN ================= */
