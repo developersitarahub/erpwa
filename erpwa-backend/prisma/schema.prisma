@@ -4,6 +4,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+ 
 }
 
 model Vendor {
@@ -15,6 +16,9 @@ model Vendor {
   whatsappStatus        String         @default("not_configured")
   whatsappVerifiedAt    DateTime?
   whatsappLastError     String?
+  // WhatsApp Flows Encryption Keys
+  whatsappFlowsPublicKey String?  // Stores the Public Key (PEM format)
+  whatsappFlowsPrivateKey String? // Encrypted Private Key
   createdAt             DateTime       @default(now())
   campaigns             Campaign[]
   categories            Category[]
@@ -27,9 +31,8 @@ model Vendor {
   templates             Template[]
   users                 User[]
   activityLogs          ActivityLog[]
-  workflows             Workflow[]
+  whatsappFlows         WhatsAppFlow[]
 }
-
 
 model User {
   id                String             @id @default(uuid())
@@ -205,6 +208,7 @@ model Conversation {
   lead             Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
   vendor           Vendor    @relation(fields: [vendorId], references: [id], onDelete: Cascade)
   messages         Message[]
+  flowResponses    FlowResponse[]
 
   @@unique([vendorId, leadId])
 }
@@ -216,6 +220,7 @@ model Template {
   displayName      String
   category         String
   status           String             @default("draft")
+  templateType     String             @default("standard") // standard, catalog, carousel
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
   campaigns        Campaign[]
@@ -223,14 +228,46 @@ model Template {
   buttons          TemplateButton[]
   languages        TemplateLanguage[]
   media            TemplateMedia[]
+  catalogProducts  TemplateCatalogProduct[] // For multi-product catalog templates
+  carouselCards    TemplateCarouselCard[]   // For carousel templates
 
   createdBy        String?            // User ID who created this template
-
+  
+  // Flow support
+  flowId           String?
+  flow             WhatsAppFlow?      @relation(fields: [flowId], references: [id], onDelete: SetNull)
 
   @@unique([vendorId, metaTemplateName])
   @@index([vendorId])
   @@index([createdBy])
+  @@index([flowId])
 
+}
+
+// Carousel Template Support (Multi-Card)
+model TemplateCarouselCard {
+  id           String   @id @default(uuid())
+  templateId   String
+  title        String
+  subtitle     String?
+  
+  // Image is required for Carousel cards
+  s3Url        String?  // S3 URL of uploaded image
+  mediaHandle  String?  // Meta Media Handle (after upload)
+  mimeType     String?
+  
+  // Button (1 per card supported in UI)
+  buttonType   String?  @default("URL") 
+  buttonText   String?
+  buttonValue  String?  // URL
+
+  position     Int      // Order position (0-9)
+  createdAt    DateTime @default(now())
+  
+  template     Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, position])
+  @@index([templateId])
 }
 
 model TemplateButton {
@@ -240,6 +277,11 @@ model TemplateButton {
   text       String
   value      String?
   position   Int
+  
+  // Flow button support
+  flowId     String?  // Reference to WhatsAppFlow if type is FLOW
+  flowAction String?  // 'navigate' or 'data_exchange'
+  
   template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   @@unique([templateId, position])
@@ -281,6 +323,21 @@ model TemplateLanguage {
 
   @@unique([templateId, language])
 }
+
+// Multi-Product Catalog Template Support
+// WhatsApp allows up to 30 products per catalog message
+model TemplateCatalogProduct {
+  id           String   @id @default(uuid())
+  templateId   String
+  productId    String   // Product ID from WhatsApp Business Catalog
+  position     Int      // Order position (0-29, max 30 products)
+  createdAt    DateTime @default(now())
+  template     Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, position])
+  @@index([templateId])
+}
+
 
 enum CampaignType {
   TEMPLATE
@@ -466,33 +523,52 @@ model ActivityLog {
   @@index([type])
 }
 
-model Workflow {
-  id          String   @id @default(uuid())
-  vendorId    String
-  name        String
-  description String?
-  isActive    Boolean  @default(false)
-  triggerKeyword String? // Keyword to start this flow
-  nodes       Json     // Store reactflow nodes
-  edges       Json     // Store reactflow edges
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// WhatsApp Flows - Interactive structured experiences
+model WhatsAppFlow {
+  id                String   @id @default(uuid())
+  metaFlowId        String   @unique  // Meta's Flow ID (from Graph API)
+  name              String
+  category          String   // lead_generation, appointment_booking, sign_up, sign_in, customer_support, etc.
+  status            String   @default("DRAFT") // DRAFT, PUBLISHED, DEPRECATED
   
-  vendor      Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  sessions    WorkflowSession[]
+  flowJson          Json     // Flow JSON definition (screens, components, routing)
+  endpointUri       String?  // Optional data exchange endpoint URL
   
-  @@unique([vendorId, triggerKeyword])
+  vendorId          String
+  vendor            Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  publishedAt       DateTime?
+  deprecatedAt      DateTime?
+  
+  // Relations
+  templates         Template[]  // Templates that use this Flow
+  responses         FlowResponse[]
+  
+  @@index([vendorId])
+  @@index([metaFlowId])
+  @@index([status])
 }
 
-model WorkflowSession {
-  id            String   @id @default(uuid())
-  workflowId    String
-  conversationId String // Link to the Conversation
-  currentNodeId String   // ID of the node the user is currently at
-  state         Json?    // Store variables collected during flow
-  status        String   @default("active") // active, completed, dropped
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  workflow      Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+// Flow Responses - Track user submissions from Flows
+model FlowResponse {
+  id                String   @id @default(uuid())
+  flowId            String?
+  flow              WhatsAppFlow? @relation(fields: [flowId], references: [id], onDelete: SetNull)
+  
+  conversationId    String
+  conversation      Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  responseData      Json     // User's Flow submission data
+  flowToken         String?  // Flow token for tracking session
+  status            String   // completed, abandoned, in_progress
+  
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+  
+  @@index([flowId])
+  @@index([conversationId])
+  @@index([flowToken])
+  @@index([status])
 }

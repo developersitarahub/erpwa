@@ -46,6 +46,9 @@ router.post(
           take: 1,
         },
         buttons: true,
+        carouselCards: {
+          orderBy: { position: 'asc' }
+        }
       },
     });
 
@@ -58,7 +61,7 @@ router.post(
     /** 3️⃣ Load header media (if any) */
     let media = null;
 
-    if (language.headerType && language.headerType !== "TEXT") {
+    if (language.headerType && language.headerType !== "TEXT" && template.templateType !== 'carousel' && template.templateType !== 'catalog') {
       media = await prisma.templateMedia.findFirst({
         where: {
           templateId: template.id,
@@ -150,16 +153,74 @@ router.post(
           });
         }
 
-        /** 🔹 BUTTONS (URL buttons only) */
-        if (currentButtonVars && currentButtonVars.length) {
-          currentButtonVars.forEach((v, index) => {
-            components.push({
-              type: "button",
-              sub_type: "url",
-              index: String(index),
-              parameters: [{ type: "text", text: String(v) }],
-            });
+        /** 🔹 CAROUSEL */
+        if (template.templateType === 'carousel' && template.carouselCards?.length > 0) {
+          const carouselCardsPayload = template.carouselCards.map((card, index) => {
+            const mediaType = (card.mimeType && card.mimeType.startsWith('video')) ? "VIDEO" : "IMAGE";
+            return {
+              card_index: index,
+              components: [
+                {
+                  type: "HEADER",
+                  parameters: [
+                    {
+                      type: mediaType.toLowerCase(),
+                      [mediaType.toLowerCase()]: {
+                        link: card.s3Url
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
           });
+
+          components.push({
+            type: "CAROUSEL",
+            cards: carouselCardsPayload
+          });
+        }
+
+        /** 🔹 BUTTONS */
+        if (template.templateType !== 'carousel') {
+          // Check if we have FLOW buttons
+          const flowButton = template.buttons?.find(btn => btn.type === "FLOW");
+
+          if (flowButton && flowButton.flowId) {
+            // Get the Flow details
+            const flow = await prisma.whatsAppFlow.findUnique({
+              where: { id: flowButton.flowId },
+              select: { metaFlowId: true, status: true }
+            });
+
+            if (flow) {
+              components.push({
+                type: "button",
+                sub_type: "flow",
+                index: String(flowButton.position),
+                parameters: [
+                  {
+                    type: "action",
+                    action: {
+                      // Embed Flow ID for tracking response linking
+                      flow_token: `${flowButton.flowId}_${to}_${Date.now()}`,
+                      flow_action_data: {},
+                    },
+                  },
+                ],
+              });
+            }
+          } else if (currentButtonVars && currentButtonVars.length) {
+            // Handle URL buttons (existing logic)
+            currentButtonVars.forEach((v, index) => {
+              components.push({
+                type: "button",
+                sub_type: "url",
+                index: String(index),
+                parameters: [{ type: "text", text: String(v) }],
+              });
+            });
+          }
         }
 
 

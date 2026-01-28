@@ -323,27 +323,6 @@ CREATE TABLE "MessageDelivery" (
     CONSTRAINT "MessageDelivery_pkey" PRIMARY KEY ("id")
 );
 
--- CreateTable
-CREATE TABLE "ActivityLog" (
-    "id" TEXT NOT NULL,
-    "vendorId" TEXT,
-    "conversationId" TEXT,
-    "messageId" TEXT,
-    "phoneNumber" TEXT,
-    "type" TEXT NOT NULL,
-    "status" TEXT NOT NULL,
-    "event" TEXT,
-    "category" TEXT,
-    "error" TEXT,
-    "payload" JSONB,
-    "direction" TEXT,
-    "responseCode" INTEGER,
-    "processingMs" INTEGER,
-    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT "ActivityLog_pkey" PRIMARY KEY ("id")
-);
-
 -- CreateIndex
 CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 
@@ -433,24 +412,6 @@ CREATE INDEX "Campaign_createdBy_idx" ON "Campaign"("createdBy");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "MessageDelivery_messageMediaId_conversationId_key" ON "MessageDelivery"("messageMediaId", "conversationId");
-
--- CreateIndex
-CREATE INDEX "ActivityLog_vendorId_idx" ON "ActivityLog"("vendorId");
-
--- CreateIndex
-CREATE INDEX "ActivityLog_conversationId_idx" ON "ActivityLog"("conversationId");
-
--- CreateIndex
-CREATE INDEX "ActivityLog_messageId_idx" ON "ActivityLog"("messageId");
-
--- CreateIndex
-CREATE INDEX "ActivityLog_status_idx" ON "ActivityLog"("status");
-
--- CreateIndex
-CREATE INDEX "ActivityLog_createdAt_idx" ON "ActivityLog"("createdAt");
-
--- CreateIndex
-CREATE INDEX "ActivityLog_type_idx" ON "ActivityLog"("type");
 
 -- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_vendorId_fkey" FOREIGN KEY ("vendorId") REFERENCES "Vendor"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -547,6 +508,3 @@ ALTER TABLE "MessageDelivery" ADD CONSTRAINT "MessageDelivery_messageId_fkey" FO
 
 -- AddForeignKey
 ALTER TABLE "MessageDelivery" ADD CONSTRAINT "MessageDelivery_messageMediaId_fkey" FOREIGN KEY ("messageMediaId") REFERENCES "MessageMedia"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "ActivityLog" ADD CONSTRAINT "ActivityLog_vendorId_fkey" FOREIGN KEY ("vendorId") REFERENCES "Vendor"("id") ON DELETE CASCADE ON UPDATE CASCADE;

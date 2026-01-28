@@ -11,7 +11,8 @@ export type User = {
   id: string;
   name: string;
   email: string;
-  role: "vendor_owner" | "vendor_admin" | "sales";
+  role: "vendor_owner" | "vendor_admin" | "sales" | "owner";
+  vendorId: string | null;
 };
 
 type AuthContextType = {
@@ -41,20 +42,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const restoreSession = async () => {
       try {
-        // 1️⃣ Try to refresh the token first
-        // We do this explicitly to ensure we have a valid access token
-        // before making any other requests.
-        const refreshRes = await api.post("/auth/refresh");
-        const { accessToken } = refreshRes.data; // Backend refresh returns { accessToken } usually, let's check controller
-
-        setAccessToken(accessToken);
-
-        // 2️⃣ Fetch latest user details (optional if refresh returns user, but good for safety)
-        // If refresh returns user, we can skpu this.
-        // Controller says: res.json(data); Auth.refresh returns { accessToken }.
-        // So we MUST call /auth/me or modify backend to return user.
-        // Let's call /auth/me.
-
         const res = await api.get("/auth/me");
 
         if (!mountedRef.current) return;
@@ -63,8 +50,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         // 🔐 CONNECT SOCKET AFTER SESSION RESTORE
         connectSocket();
-      } catch (err) {
-        console.error("Session restore failed:", err);
+      } catch {
         setAccessToken(null);
         if (mountedRef.current) {
           setUser(null);
@@ -102,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener("auth:logout", handleLogout);
     };
-  }, [router, pathname]);
+  }, [router]);
 
   /* ================= LOGIN ================= */
 

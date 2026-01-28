@@ -32,12 +32,15 @@ import {
   AlertTriangle,
   Users,
   Eye,
+  ShoppingBag,
+  Workflow,
 } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "react-toastify";
 import { cn } from "@/lib/utils";
 import { leadsAPI } from "@/lib/leadsApi";
 import { Lead } from "@/lib/types";
+import CatalogTemplateModal from "@/components/templates/CatalogTemplateModal";
 
 const formatError = (error: any, defaultMsg: string) => {
   const errorData = error.response?.data;
@@ -61,6 +64,7 @@ type Template = {
   displayName: string;
   category: string;
   status: string;
+  templateType?: string; // standard, catalog, carousel
   createdAt: string;
   languages: {
     language: string;
@@ -119,9 +123,13 @@ export default function TemplatesPage() {
 
   const [headerFile, setHeaderFile] = useState<File | null>(null);
   const [headerPreview, setHeaderPreview] = useState<string | null>(null);
+  const [flows, setFlows] = useState<any[]>([]);
   const [buttons, setButtons] = useState<
-    { type: string; text: string; value?: string }[]
+    { type: string; text: string; value?: string; flowId?: string; flowAction?: string }[]
   >([]);
+
+  // --- Catalog Template Modal State ---
+  const [showCatalogModal, setShowCatalogModal] = useState(false);
 
   // --- Send Modal State ---
   const [showSendModal, setShowSendModal] = useState(false);
@@ -159,6 +167,12 @@ export default function TemplatesPage() {
     try {
       const res = await api.get("/vendor/templates");
       setTemplates(res.data);
+
+      // Fetch flows for selection
+      api.get("/whatsapp/flows").then((res) => {
+        setFlows(res.data.flows || []);
+      }).catch(console.error);
+
     } catch (error) {
       console.error("Failed to fetch templates", error);
     } finally {
@@ -194,7 +208,18 @@ export default function TemplatesPage() {
   };
 
   const openEditModal = (template: Template) => {
+    // Check for special template types (Carousel/Catalog)
     const lang = template.languages?.[0];
+    const headerType = lang?.headerType;
+
+    // If it's a special type, use the Catalog/Carousel modal
+    if (template.templateType === 'carousel' || template.templateType === 'catalog' ||
+      headerType === 'CAROUSEL' || headerType === 'CATALOG' || template.metaTemplateName.includes('carousel')) {
+      setSelectedTemplate(template);
+      setShowCatalogModal(true);
+      return;
+    }
+
     setFormData({
       displayName: template.displayName,
       category: template.category,
@@ -210,7 +235,11 @@ export default function TemplatesPage() {
         template.buttons.map((b: any) => ({
           type: b.type,
           text: b.text,
+          type: b.type,
+          text: b.text,
           value: b.value || "",
+          flowId: b.flowId,
+          flowAction: b.flowAction
         }))
       );
     } else {
@@ -244,7 +273,7 @@ export default function TemplatesPage() {
     setFormData({ ...formData, body: formData.body + ` {{${varCount}}} ` });
   };
 
-  const addButton = (type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER") => {
+  const addButton = (type: "QUICK_REPLY" | "URL" | "PHONE_NUMBER" | "FLOW") => {
     if (buttons.length >= 3) return toast.info("Max 3 buttons allowed");
     setButtons([...buttons, { type, text: "", value: "" }]);
   };
@@ -307,6 +336,10 @@ export default function TemplatesPage() {
         if (btn.value) {
           data.append(`buttons[${index}][value]`, btn.value);
         }
+        if (btn.type === "FLOW") {
+          if (btn.flowId) data.append(`buttons[${index}][flowId]`, btn.flowId);
+          if (btn.flowAction) data.append(`buttons[${index}][flowAction]`, btn.flowAction);
+        }
       });
 
       if (editId) {
@@ -335,6 +368,30 @@ export default function TemplatesPage() {
       }
 
       setShowCreateModal(false);
+    } catch (error: any) {
+      toast.error(formatError(error, "Failed to save template"));
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // --- Catalog Template Handler ---
+  // --- Catalog Template Handler ---
+  const handleCatalogTemplateSubmit = async (templateData: any) => {
+    try {
+      setIsCreating(true);
+
+      if (selectedTemplate && selectedTemplate.id) {
+        await api.put(`/vendor/templates/${selectedTemplate.id}`, templateData);
+        toast.success("Template updated successfully!");
+      } else {
+        await api.post("/vendor/templates", templateData);
+        toast.success("Catalog template created successfully!");
+      }
+
+      fetchTemplates();
+      setShowCatalogModal(false);
+      setSelectedTemplate(null);
     } catch (error: any) {
       toast.error(formatError(error, "Failed to save template"));
     } finally {
@@ -569,12 +626,20 @@ export default function TemplatesPage() {
               be used for bulk marketing and utility messaging.
             </p>
           </div>
-          <Button
-            onClick={openCreateModal}
-            className="shadow-lg shadow-green-500/20 bg-green-600 hover:bg-green-700 text-white transition-all hover:scale-105 active:scale-95"
-          >
-            <Plus className="w-4 h-4 mr-2" /> New Template
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={openCreateModal}
+              className="shadow-lg shadow-green-500/20 bg-green-600 hover:bg-green-700 text-white transition-all hover:scale-105 active:scale-95"
+            >
+              <Plus className="w-4 h-4 mr-2" /> Standard Template
+            </Button>
+            <Button
+              onClick={() => setShowCatalogModal(true)}
+              className="shadow-lg shadow-blue-500/20 bg-blue-600 hover:bg-blue-700 text-white transition-all hover:scale-105 active:scale-95"
+            >
+              <ShoppingBag className="w-4 h-4 mr-2" /> Catalog Template
+            </Button>
+          </div>
         </div>
 
         {loading ? (
@@ -637,6 +702,12 @@ export default function TemplatesPage() {
                       <div className="shrink-0">{getStatusBadge(t.status)}</div>
                     </div>
                     <div className="flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground shrink-0 uppercase"
+                      >
+                        {t.templateType || 'STANDARD'}
+                      </Badge>
                       <Badge
                         variant="outline"
                         className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground shrink-0"
@@ -1542,6 +1613,14 @@ export default function TemplatesPage() {
                           >
                             + Phone
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 text-[10px]"
+                            onClick={() => addButton("FLOW")}
+                          >
+                            + Flow
+                          </Button>
                         </div>
                       </div>
 
@@ -1567,6 +1646,9 @@ export default function TemplatesPage() {
                                   )}
                                   {btn.type === "PHONE_NUMBER" && (
                                     <Phone className="w-3 h-3" />
+                                  )}
+                                  {btn.type === "FLOW" && (
+                                    <Workflow className="w-3 h-3" />
                                   )}
                                   {btn.type === "QUICK_REPLY" && (
                                     <CheckCircle className="w-3 h-3" />
@@ -1597,6 +1679,29 @@ export default function TemplatesPage() {
                                     }
                                   />
                                 )}
+
+                              {btn.type === "FLOW" && (
+                                <div className="flex flex-col gap-2 mt-2">
+                                  <select
+                                    className="h-8 text-sm border rounded px-2 w-full bg-background"
+                                    value={btn.flowId || ""}
+                                    onChange={(e) => updateButton(idx, "flowId", e.target.value)}
+                                  >
+                                    <option value="">Select Flow</option>
+                                    {flows.map((f) => (
+                                      <option key={f.id} value={f.id}>
+                                        {f.name} ({f.status})
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <Input
+                                    className="h-8 text-sm"
+                                    placeholder="Screen ID (e.g. WELCOME)"
+                                    value={btn.value}
+                                    onChange={(e) => updateButton(idx, "value", e.target.value)}
+                                  />
+                                </div>
+                              )}
                             </div>
                             <Button
                               variant="ghost"
@@ -1790,6 +1895,21 @@ export default function TemplatesPage() {
           </Card>
         </div>
       )}
+
+      {/* CATALOG TEMPLATE MODAL */}
+      <AnimatePresence>
+        {showCatalogModal && (
+          <CatalogTemplateModal
+            isOpen={showCatalogModal}
+            onClose={() => {
+              setShowCatalogModal(false);
+              setSelectedTemplate(null);
+            }}
+            onSubmit={handleCatalogTemplateSubmit}
+            initialData={selectedTemplate}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -163,15 +163,27 @@ export default function ActivityLogsPage() {
         }
     }, []);
 
-    // Initial fetch - only on mount and when user changes
-    const hasFetched = useRef(false);
+    // Initial fetch and refetch when vendor changes
+    const hasFetchedRef = useRef(false);
+    const previousVendorIdRef = useRef<string | null>(null);
+
     useEffect(() => {
-        if (user && (user.role === "vendor_owner" || user.role === "vendor_admin") && !hasFetched.current) {
-            hasFetched.current = true;
-            fetchLogs();
-            fetchWhatsappStatus();
+        if (user && (user.role === "vendor_owner" || user.role === "vendor_admin")) {
+            // Check if vendor has changed
+            const vendorChanged = previousVendorIdRef.current !== null && previousVendorIdRef.current !== user.vendorId;
+
+            if (!hasFetchedRef.current || vendorChanged) {
+                console.log("🔄 Fetching logs - Vendor:", user.vendorId, "Changed:", vendorChanged);
+                hasFetchedRef.current = true;
+                previousVendorIdRef.current = user.vendorId;
+
+                // Reset and refetch logs for new vendor
+                setLogs([]);
+                fetchLogs();
+                fetchWhatsappStatus();
+            }
         }
-    }, [user, fetchLogs, fetchWhatsappStatus]);
+    }, [user, user?.vendorId, fetchLogs, fetchWhatsappStatus]);
 
     // 🔥 Real-time socket listener for new webhook logs
     useEffect(() => {
@@ -182,6 +194,13 @@ export default function ActivityLogsPage() {
 
         const handleNewLog = (newLog: ActivityLog) => {
             console.log("🔥 Activity log received:", newLog);
+
+            // 🔒 Filter: Only process logs for the current vendor
+            if (user.role !== "owner" && newLog.vendorId !== user.vendorId) {
+                console.log("⏭️ Skipping log from different vendor:", newLog.vendorId);
+                return;
+            }
+
             setIsLive(true);
 
             // Check if this log already exists (update case)

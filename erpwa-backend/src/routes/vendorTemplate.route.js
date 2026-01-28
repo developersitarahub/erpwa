@@ -1,4 +1,5 @@
 import express from "express";
+// Force restart
 import fetch from "node-fetch";
 import prisma from "../prisma.js";
 import { decrypt } from "../utils/encryption.js";
@@ -39,6 +40,8 @@ router.get(
         languages: true,
         media: true,
         buttons: true,
+        catalogProducts: true, // Include catalog products
+        carouselCards: { orderBy: { position: 'asc' } }, // Include carousel cards ordered by position
       },
       orderBy: { createdAt: "desc" },
     });
@@ -76,7 +79,7 @@ router.post(
   "/",
   authenticate,
   requireRoles(["vendor_owner", "vendor_admin", "sales"]),
-  upload.single("header.file"),
+  upload.any(), // Use any() to support dynamic indexed fields for carousel images
   asyncHandler(async (req, res) => {
     const {
       metaTemplateName,
@@ -86,14 +89,40 @@ router.post(
       body,
       footerText,
       buttons = [],
+      templateType = 'standard', // 'standard', 'catalog', 'carousel'
+      catalogProducts = [], // Array of product IDs for catalog templates
     } = req.body;
 
     if (!metaTemplateName || !category || !language || !body) {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
+    // Validate catalog template
+    if (templateType === 'catalog') {
+      if (!Array.isArray(catalogProducts) || catalogProducts.length === 0) {
+        return res.status(400).json({ message: "At least one product is required for catalog templates" });
+      }
+      if (catalogProducts.length > 30) {
+        return res.status(400).json({ message: "Maximum 30 products allowed per catalog template" });
+      }
+    }
+
+    // Parse Carousel Cards
+    let carouselCardsData = [];
+    if (templateType === 'carousel') {
+      try {
+        carouselCardsData = JSON.parse(req.body.carouselCards || '[]');
+        if (carouselCardsData.length === 0) {
+          return res.status(400).json({ message: "At least one card is required for carousel templates" });
+        }
+      } catch (e) {
+        return res.status(400).json({ message: "Invalid carousel cards data" });
+      }
+    }
+
     const headerType = req.body["header.type"] || "TEXT";
-    const headerFile = req.file;
+    // Find header file by fieldname
+    const headerFile = req.files?.find(f => f.fieldname === "header.file");
 
 
     if (!["TEXT", "IMAGE", "VIDEO", "DOCUMENT"].includes(headerType)) {
@@ -123,6 +152,7 @@ router.post(
         displayName,
         category,
         status: "draft",
+        templateType, // Add template type
         createdBy: req.user.id, // 🔒 Track who created this template
       },
     });
@@ -167,6 +197,46 @@ router.post(
       });
     }
 
+    /** CAROUSEL CARDS */
+    if (templateType === 'carousel' && carouselCardsData.length > 0) {
+      for (let i = 0; i < carouselCardsData.length; i++) {
+        const card = carouselCardsData[i];
+        // Find file by dynamic fieldname
+        const imageFile = req.files?.find(f => f.fieldname === `carouselImages_${i}`);
+
+        let s3Url = card.s3Url || null; // Use existing URL if provided
+        let mimeType = null;
+
+        if (imageFile) {
+          const uploadResult = await uploadTemplateMediaToS3({
+            buffer: imageFile.buffer,
+            mimeType: imageFile.mimetype,
+            vendorId: req.user.vendorId,
+            templateId: template.id,
+            language,
+            extension: imageFile.originalname.split(".").pop(),
+            prefix: 'carousel'
+          });
+          s3Url = uploadResult.url;
+          mimeType = imageFile.mimetype;
+        }
+
+        await prisma.templateCarouselCard.create({
+          data: {
+            templateId: template.id,
+            title: card.title,
+            subtitle: card.subtitle,
+            buttonText: card.button?.text,
+            buttonValue: card.button?.url,
+            buttonType: "URL",
+            position: i,
+            s3Url: s3Url,
+            mimeType: mimeType,
+          }
+        });
+      }
+    }
+
 
     /** BUTTONS */
     for (let i = 0; i < buttons.length; i++) {
@@ -182,8 +252,24 @@ router.post(
             btn.type === "URL" || btn.type === "PHONE_NUMBER"
               ? btn.value
               : null,
+          // Flow button support
+          flowId: btn.type === "FLOW" ? btn.flowId : null,
+          flowAction: btn.type === "FLOW" ? (btn.flowAction || "navigate") : null,
         },
       });
+    }
+
+    /** CATALOG PRODUCTS (for catalog templates) */
+    if (templateType === 'catalog' && Array.isArray(catalogProducts)) {
+      for (let i = 0; i < catalogProducts.length; i++) {
+        await prisma.templateCatalogProduct.create({
+          data: {
+            templateId: template.id,
+            productId: catalogProducts[i],
+            position: i,
+          },
+        });
+      }
     }
 
     res.json({ template, language: templateLanguage });
@@ -230,7 +316,7 @@ router.put(
   "/:id",
   authenticate,
   requireRoles(["vendor_owner", "vendor_admin", "sales"]),
-  upload.single("header.file"),
+  upload.any(), // Use any() to support dynamic fields
   asyncHandler(async (req, res) => {
     const { id } = req.params;
     const {
@@ -240,6 +326,7 @@ router.put(
       body,
       footerText,
       buttons = [],
+      templateType = 'standard',
     } = req.body;
 
     const template = await prisma.template.findUnique({
@@ -255,9 +342,20 @@ router.put(
       return res.status(403).json({ message: "Cannot edit approved or pending templates" });
     }
 
+    // Parse Carousel Cards
+    let carouselCardsData = [];
+    if (template.templateType === 'carousel' || templateType === 'carousel') {
+      try {
+        carouselCardsData = JSON.parse(req.body.carouselCards || '[]');
+      } catch (e) {
+        return res.status(400).json({ message: "Invalid carousel cards data" });
+      }
+    }
+
     // Handle Header File
     const headerType = req.body["header.type"] || "TEXT";
-    const headerFile = req.file;
+    const headerFile = req.files?.find(f => f.fieldname === "header.file");
+
 
     // Update Template
     await prisma.template.update({
@@ -265,13 +363,16 @@ router.put(
       data: {
         displayName,
         category,
-        status: "draft", // Reset to draft if it was rejected
+        // Update type if changed (rare but possible)
+        templateType: template.templateType === 'standard' ? templateType : template.templateType,
+        status: "draft",
       },
     });
 
     // Update Language
-    // Note: We assume 1 language per template for now based on current logic
-    const langId = template.languages[0]?.id;
+    const langId = template.languages.find((l) => l.language === langCode)?.id
+      || template.languages[0]?.id;
+
     if (langId) {
       await prisma.templateLanguage.update({
         where: { id: langId },
@@ -280,13 +381,88 @@ router.put(
           body,
           footerText,
           headerType,
+          headerText: headerType === "TEXT" ? (req.body["header.text"] || req.body.headerText) : null,
           metaStatus: "draft",
         },
       });
 
-      // Handle properties that might need media update (simplified for now)
-      if (headerFile) {
-        await uploadTemplateMediaToS3(template.id, langCode, headerFile, headerType);
+      // Handle properties that might need media update
+      if (["IMAGE", "VIDEO", "DOCUMENT"].includes(headerType)) {
+        if (headerFile) {
+          const uploadResult = await uploadTemplateMediaToS3({
+            buffer: headerFile.buffer,
+            mimeType: headerFile.mimetype,
+            vendorId: req.user.vendorId,
+            templateId: template.id,
+            language: langCode,
+            extension: headerFile.originalname.split(".").pop(),
+          });
+
+          // Upsert Media
+          const existingMedia = await prisma.templateMedia.findFirst({
+            where: { templateId: template.id, language: langCode }
+          });
+
+          if (existingMedia) {
+            await prisma.templateMedia.update({
+              where: { id: existingMedia.id },
+              data: { s3Url: uploadResult.url, mimeType: headerFile.mimetype, uploadStatus: "pending" }
+            });
+          } else {
+            await prisma.templateMedia.create({
+              data: {
+                templateId: template.id,
+                language: langCode,
+                mediaType: headerType.toLowerCase(),
+                s3Url: uploadResult.url,
+                uploadStatus: "pending",
+                mimeType: headerFile.mimetype,
+              }
+            });
+          }
+        }
+      }
+    }
+
+    // Update Carousel Cards (Recreate)
+    if ((template.templateType === 'carousel' || templateType === 'carousel') && carouselCardsData.length > 0) {
+      await prisma.templateCarouselCard.deleteMany({ where: { templateId: id } });
+
+      for (let i = 0; i < carouselCardsData.length; i++) {
+        const card = carouselCardsData[i];
+        // Find file by dynamic fieldname
+        const imageFile = req.files?.find(f => f.fieldname === `carouselImages_${i}`);
+
+        let s3Url = card.s3Url || null;
+        let mimeType = null;
+
+        if (imageFile) {
+          const uploadResult = await uploadTemplateMediaToS3({
+            buffer: imageFile.buffer,
+            mimeType: imageFile.mimetype,
+            vendorId: req.user.vendorId,
+            templateId: template.id,
+            language: langCode,
+            extension: imageFile.originalname.split(".").pop(),
+            prefix: 'carousel'
+          });
+          s3Url = uploadResult.url;
+          mimeType = imageFile.mimetype;
+        }
+
+        await prisma.templateCarouselCard.create({
+          data: {
+            templateId: template.id,
+            title: card.title,
+            subtitle: card.subtitle,
+            buttonText: card.button?.text,
+            buttonValue: card.button?.url,
+            buttonType: "URL",
+            position: i,
+            s3Url: s3Url,
+            mimeType: mimeType,
+          }
+        });
       }
     }
 
@@ -294,8 +470,7 @@ router.put(
     await prisma.templateButton.deleteMany({ where: { templateId: id } });
 
     // Re-create buttons
-    // Note: In a real app we might want to be smarter, but this works for drafts
-    if (buttons && Array.isArray(buttons)) { // Make sure buttons is array
+    if (buttons && Array.isArray(buttons)) {
       for (let i = 0; i < buttons.length; i++) {
         const btn = buttons[i];
         await prisma.templateButton.create({
@@ -305,15 +480,14 @@ router.put(
             text: btn.text,
             position: i,
             value: (btn.type === "URL" || btn.type === "PHONE_NUMBER") ? btn.value : null,
+            // Flow button support
+            flowId: btn.type === "FLOW" ? btn.flowId : null,
+            flowAction: btn.type === "FLOW" ? (btn.flowAction || "navigate") : null,
           },
         });
       }
     } else if (req.body.buttons) {
-      // If buttons came as object/map from FormData (e.g. buttons[0][type])
-      // The middleware or body parser might handle it differently. 
-      // But since we use array notation in frontend FormData, and multer/express typically handles it...
-      // We will assume the frontend sends it correct structure or we parse it.
-      // For simplicity in this edit, assuming the previous loop works if buttons is parsed correctly.
+      // Handle case where buttons come as separate fields if necessary
     }
 
     res.json({ success: true, message: "Template updated" });
@@ -331,15 +505,13 @@ router.post(
   requireRoles(["vendor_owner", "vendor_admin", "sales"]),
   asyncHandler(async (req, res) => {
 
-    // 🚨 HARD BLOCK ANY BODY OR MULTIPART - Removed strict check to avoid false positives with empty JSON objects
-    // if (req.body && Object.keys(req.body).length > 0) ...
-
     const template = await prisma.template.findUnique({
       where: { id: req.params.id },
       include: {
         vendor: true,
         languages: true,
         buttons: true,
+        carouselCards: true, // Fetch carousel cards
       },
     });
 
@@ -350,137 +522,199 @@ router.post(
     const language = template.languages[0];
     const headerType = (language.headerType || "TEXT").toUpperCase();
     const accessToken = decrypt(template.vendor.whatsappAccessToken);
+    const appId = process.env.META_APP_ID;
+
+    if (!appId) {
+      throw new Error("META_APP_ID environment variable is required for template media upload");
+    }
 
     const components = [];
+
+    // PRE-FETCH FLOW IDS IF NEEDED
+    const flowButtons = template.buttons.filter(b => b.type === "FLOW" && b.flowId);
+    let flowMap = {};
+    if (flowButtons.length > 0) {
+      const flowIds = flowButtons.map(b => b.flowId);
+      const flows = await prisma.whatsAppFlow.findMany({
+        where: { id: { in: flowIds } },
+        select: { id: true, metaFlowId: true }
+      });
+      flowMap = Object.fromEntries(flows.map(f => [f.id, f.metaFlowId]));
+    }
+
     console.log("SUBMIT BODY KEYS:", Object.keys(req.body || {}));
 
-    /// ===============================
-    // HEADER (IMAGE / VIDEO / DOCUMENT)
     // ===============================
-    let headerHandle = null;
-
-    if (headerType !== "TEXT") {
-      const media = await prisma.templateMedia.findFirst({
-        where: {
-          templateId: template.id,
-          language: language.language,
-        },
-      });
-
-      if (!media) {
-        throw new Error("Header media missing");
-      }
-
-      // Upload to Meta using Resumable Upload API (required for templates)
-      // Always re-upload since handles may expire
-      console.log("📥 Downloading media from S3:", media.s3Url);
-
-      const s3Response = await fetch(media.s3Url);
-      if (!s3Response.ok) {
-        throw new Error("Failed to download media from S3");
-      }
-
-      const buffer = Buffer.from(await s3Response.arrayBuffer());
-      const fileName = media.s3Url.split("/").pop() || "header-media";
-
-      // Use Meta's Resumable Upload API (requires App ID from env)
-      const appId = process.env.META_APP_ID;
-      if (!appId) {
-        throw new Error("META_APP_ID environment variable is required for template media upload");
-      }
-
-      headerHandle = await uploadTemplateMediaToMeta({
-        accessToken,
-        appId,
-        buffer,
-        mimeType: media.mimeType,
-        fileName,
-      });
-
-      // Store the handle (note: handles can expire, so we may need to re-upload)
-      await prisma.templateMedia.update({
-        where: { id: media.id },
-        data: {
-          whatsappMediaId: headerHandle,
-          uploadStatus: "uploaded",
-          uploadedAt: new Date(),
-        },
-      });
-
-      components.push({
-        type: "HEADER",
-        format: headerType,
-        example: {
-          header_handle: [headerHandle],
-        },
-      });
-    }
-
-
-    /**
-     * ===============================
-     * BODY (REQUIRED BY META)
-     * ===============================
-     */
-    // Extract variables like {{1}}, {{2}} from body text
-    const bodyVariables = language.body.match(/{{\d+}}/g) || [];
-    const bodyComponent = {
-      type: "BODY",
-      text: language.body,
-    };
-
-    // If there are variables, add example values
-    if (bodyVariables.length > 0) {
-      bodyComponent.example = {
-        body_text: [bodyVariables.map((_, i) => `Sample${i + 1}`)],
+    // 1. CAROUSEL TEMPLATE LOGIC
+    // ===============================
+    if (template.templateType === 'carousel') {
+      // BODY
+      const bodyVariables = language.body.match(/{{\d+}}/g) || [];
+      const bodyComponent = {
+        type: "BODY",
+        text: language.body,
       };
-    }
+      if (bodyVariables.length > 0) {
+        bodyComponent.example = { body_text: [bodyVariables.map((_, i) => `Sample${i + 1}`)] };
+      }
+      components.push(bodyComponent);
 
-    components.push(bodyComponent);
+      // CAROUSEL COMPONENT
+      const cards = [];
+      for (const card of template.carouselCards) {
+        let headerHandle = null;
 
-    /**
-     * ===============================
-     * FOOTER
-     * ===============================
-     */
-    if (language.footerText) {
-      components.push({
-        type: "FOOTER",
-        text: language.footerText,
-      });
-    }
+        if (card.s3Url) {
+          console.log("📥 Downloading carousel card media from S3:", card.s3Url);
+          const s3Response = await fetch(card.s3Url);
+          if (!s3Response.ok) throw new Error("Failed to download media from S3");
 
-    /**
-     * ===============================
-     * BUTTONS
-     * ===============================
-     */
-    if (template.buttons.length) {
-      components.push({
-        type: "BUTTONS",
-        buttons: template.buttons.map((b) => {
-          if (b.type === "URL") {
-            return {
-              type: "URL",
-              text: b.text,
-              url: b.value,
-              example: ["TRACK123"],
-            };
+          const buffer = Buffer.from(await s3Response.arrayBuffer());
+          const fileName = card.s3Url.split("/").pop() || "card-media";
+
+          headerHandle = await uploadTemplateMediaToMeta({
+            accessToken,
+            appId,
+            buffer,
+            mimeType: card.mimeType || 'image/jpeg',
+            fileName,
+          });
+
+          // Update card with handle
+          await prisma.templateCarouselCard.update({
+            where: { id: card.id },
+            data: { mediaHandle: headerHandle }
+          });
+        }
+
+        const cardBodyText = [card.title, card.subtitle].filter(Boolean).join("\n");
+
+        const buttonObj = {
+          type: "URL",
+          text: card.buttonText || "View",
+          url: card.buttonValue || "https://example.com"
+        };
+
+        // Only add example if the URL has a variable like {{1}}
+        if (buttonObj.url && buttonObj.url.includes("{{1}}")) {
+          buttonObj.example = ["TRACK123"];
+        }
+
+        const format = (card.mimeType && card.mimeType.startsWith('video')) ? "VIDEO" : "IMAGE";
+
+        const cardComponents = [
+          {
+            type: "HEADER",
+            format: format,
+            example: { header_handle: [headerHandle] }
+          },
+          {
+            type: "BODY",
+            text: cardBodyText || "Card Details",
+          },
+          {
+            type: "BUTTONS",
+            buttons: [buttonObj]
           }
-          if (b.type === "PHONE_NUMBER") {
-            return {
-              type: "PHONE_NUMBER",
-              text: b.text,
-              phone_number: b.value,
-            };
-          }
-          return {
-            type: "QUICK_REPLY",
-            text: b.text,
-          };
-        }),
+        ];
+        cards.push({ components: cardComponents });
+      }
+
+      components.push({
+        type: "CAROUSEL",
+        cards: cards
       });
+
+    } else {
+      // ===============================
+      // 2. STANDARD TEMPLATE LOGIC
+      // ===============================
+
+      // HEADER
+      let headerHandle = null;
+      if (headerType !== "TEXT") {
+        const media = await prisma.templateMedia.findFirst({
+          where: { templateId: template.id, language: language.language },
+        });
+
+        if (!media) throw new Error("Header media missing");
+
+        console.log("📥 Downloading media from S3:", media.s3Url);
+        const s3Response = await fetch(media.s3Url);
+        if (!s3Response.ok) throw new Error("Failed to download media from S3");
+
+        const buffer = Buffer.from(await s3Response.arrayBuffer());
+        const fileName = media.s3Url.split("/").pop() || "header-media";
+
+        headerHandle = await uploadTemplateMediaToMeta({
+          accessToken,
+          appId,
+          buffer,
+          mimeType: media.mimeType,
+          fileName,
+        });
+
+        await prisma.templateMedia.update({
+          where: { id: media.id },
+          data: { whatsappMediaId: headerHandle, uploadStatus: "uploaded", uploadedAt: new Date() },
+        });
+
+        components.push({
+          type: "HEADER",
+          format: headerType,
+          example: { header_handle: [headerHandle] },
+        });
+      }
+
+      // BODY
+      const bodyVariables = language.body.match(/{{\d+}}/g) || [];
+      const bodyComponent = {
+        type: "BODY",
+        text: language.body,
+      };
+      if (bodyVariables.length > 0) {
+        bodyComponent.example = { body_text: [bodyVariables.map((_, i) => `Sample${i + 1}`)] };
+      }
+      components.push(bodyComponent);
+
+      // FOOTER
+      if (language.footerText) {
+        components.push({ type: "FOOTER", text: language.footerText });
+      }
+
+      // BUTTONS
+      if (template.buttons.length) {
+        components.push({
+          type: "BUTTONS",
+          buttons: template.buttons.map((b) => {
+            if (b.type === "URL") {
+              return { type: "URL", text: b.text, url: b.value, example: ["TRACK123"] };
+            }
+            if (b.type === "PHONE_NUMBER") {
+              return { type: "PHONE_NUMBER", text: b.text, phone_number: b.value };
+            }
+            if (b.type === "FLOW") {
+              const metaFlowId = flowMap[b.flowId];
+              console.log(`Processing FLOW button. UUID: ${b.flowId}, MetaID: ${metaFlowId}, Action: ${b.flowAction}`);
+
+              if (!metaFlowId) {
+                throw new Error(`Validation Failed: The selected Flow (${b.flowId}) has no Meta ID. Ensure the Flow is created and synced correctly.`);
+              }
+              return {
+                type: "FLOW",
+                text: b.text,
+                flow_id: metaFlowId,
+                flow_action: b.flowAction || "navigate",
+                navigate_screen: b.value || "WELCOME"
+              };
+            }
+            return { type: "QUICK_REPLY", text: b.text };
+          }),
+        });
+      }
     }
+
+
 
     /**
      * ===============================
