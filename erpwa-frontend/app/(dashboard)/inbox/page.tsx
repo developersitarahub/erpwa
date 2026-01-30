@@ -910,7 +910,6 @@ export default function InboxPage() {
       const allLeadsRes = await api.get("/leads-management");
       // status_counts, total are also returned but we only need leads
       setAssignedLeads(allLeadsRes.data.data.leads || []);
-
     } catch (err) {
       console.error("❌ Failed to load inbox", err);
     }

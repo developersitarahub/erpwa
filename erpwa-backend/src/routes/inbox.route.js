@@ -134,9 +134,12 @@ router.get(
       const userId = req.user.id;
 
       if (assignedId !== userId) {
-        console.warn(`⛔ ACCESS DENIED: Sales user ${userId} tried to access lead assigned to ${assignedId}`);
+        console.warn(
+          `⛔ ACCESS DENIED: Sales user ${userId} tried to access lead assigned to ${assignedId}`,
+        );
         return res.status(403).json({
-          message: "You do not have permission to view this conversation (Lead not assigned to you).",
+          message:
+            "You do not have permission to view this conversation (Lead not assigned to you).",
         });
       }
     }

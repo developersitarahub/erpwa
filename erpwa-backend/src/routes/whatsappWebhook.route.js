@@ -561,7 +561,10 @@ router.post("/", async (req, res) => {
             include: { media: true },
           });
 
-          console.log("📤 Emitting message:new to conversation:", conversation.id);
+          console.log(
+            "📤 Emitting message:new to conversation:",
+            conversation.id,
+          );
           console.log("📤 Message data:", {
             id: fullMessage.id,
             sender: "customer",
@@ -793,7 +796,7 @@ router.post("/", async (req, res) => {
         payload: templateUpdate,
         responseCode: 200,
         processingMs: Date.now() - startTime,
-        direction: "inbound"
+        direction: "inbound",
       });
     }
 
