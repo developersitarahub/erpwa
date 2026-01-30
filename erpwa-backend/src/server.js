@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import http from "http";
+import multer from "multer";
 import "./cron/templateStatus.cron.js";
 import prisma from "./prisma.js";
 import { processWhatsappQueue } from "./workers/whatsapp.worker.js";
@@ -74,6 +75,29 @@ app.use("/webhook", whatsappWebhookRoutes);
 app.use("/test", testUploadRoute);
 app.use("/api/whatsapp", WhatsappNumberCheckRoute);
 app.use("/api/whatsapp/flows", whatsappFlowsRoutes);
+
+/* ================= ERROR HANDLING ================= */
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(400).json({
+        message: "File too large",
+        error: "Maximum file size limit is 100MB."
+      });
+    }
+    return res.status(400).json({ message: "Upload Error", error: err.message });
+  }
+
+  if (err) {
+    console.error("❌ Global Error:", err);
+    return res.status(500).json({
+      message: "Internal Server Error",
+      error: err.message || "Unknown error occurred"
+    });
+  }
+
+  next();
+});
 
 /* ================= SERVER START ================= */
 const PORT = process.env.PORT || 5000;

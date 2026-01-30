@@ -3,7 +3,7 @@
 import { motion } from "framer-motion";
 import { Card } from "@/components/card";
 import { Badge } from "@/components/badge";
-import { Calendar, Users, ImageIcon, Send } from "lucide-react";
+import { Calendar, Users, ImageIcon, Send, ShoppingBag, Layers } from "lucide-react";
 
 interface Campaign {
   id: string;
@@ -15,6 +15,9 @@ interface Campaign {
   totalMessages?: number;
   sentMessages?: number;
   failedMessages?: number;
+  template?: {
+    templateType?: "standard" | "catalog" | "carousel" | string;
+  };
 }
 
 export default function CampaignCard({
@@ -34,7 +37,15 @@ export default function CampaignCard({
     failed: "bg-red-500/10 text-red-500 border-red-500/20",
   };
 
-  const Icon = campaign.type === "image" ? ImageIcon : Send;
+  let Icon = ImageIcon;
+  const normalizedType = (campaign.type || "").toLowerCase();
+
+  if (normalizedType === "template") {
+    Icon = Send;
+    const templateType = campaign.template?.templateType?.toLowerCase();
+    if (templateType === "catalog") Icon = ShoppingBag;
+    if (templateType === "carousel") Icon = Layers;
+  }
 
   // Calculate progress
   const total = campaign.totalMessages || 0;
@@ -69,7 +80,9 @@ export default function CampaignCard({
                   {campaign.name}
                 </h3>
                 <p className="text-sm text-muted-foreground capitalize">
-                  {campaign.type} Campaign
+                  {(campaign.type || "").toLowerCase() === "template" && campaign.template?.templateType
+                    ? `${campaign.template.templateType} Campaign`
+                    : `${(campaign.type || "").toLowerCase()} Campaign`}
                 </p>
               </div>
             </div>

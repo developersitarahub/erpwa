@@ -42,12 +42,62 @@ router.get("/", authenticate, async (req, res) => {
         if (role === "owner") {
             // Global owner sees ALL logs from ALL vendors
             where = {};
-        } else if (role === "vendor_owner" && vendorId) {
-            // Vendor owner sees only their vendor's logs (including system logs for their vendor)
+        } else if ((role === "vendor_owner" || role === "vendor_admin") && vendorId) {
+            // Vendor owner/admin sees logs for their vendor
             where = { vendorId: vendorId };
-        } else if (role === "vendor_admin" && vendorId) {
-            // Vendor admin sees only their vendor's logs (no null vendorId system logs)
-            where = { vendorId: vendorId };
+
+            // 🔒 STRICT FILTER: Only show logs for the CURRENTLY connected WhatsApp account
+            try {
+                const currentVendor = await prisma.vendor.findUnique({
+                    where: { id: vendorId },
+                    select: { whatsappBusinessId: true, whatsappPhoneNumberId: true }
+                });
+
+                if (currentVendor) {
+                    if (currentVendor.whatsappBusinessId || currentVendor.whatsappPhoneNumberId) {
+                        const orConditions = [];
+
+                        // 1. Match by WABA ID if available
+                        if (currentVendor.whatsappBusinessId) {
+                            orConditions.push({ whatsappBusinessId: currentVendor.whatsappBusinessId });
+                        }
+
+                        // 2. Match by Phone Number ID if available
+                        if (currentVendor.whatsappPhoneNumberId) {
+                            orConditions.push({ whatsappPhoneNumberId: currentVendor.whatsappPhoneNumberId });
+                        }
+
+                        // 3. Match legacy/system logs for this vendor that have NO WABA/Phone set
+                        // But EXCLUDE old WhatsApp traffic logs (which would have null IDs but we want to hide them)
+                        // This ensures we still see "User Created" etc., but not old messages/webhooks.
+                        orConditions.push({
+                            AND: [
+                                { vendorId: vendorId },
+                                { whatsappBusinessId: null },
+                                { whatsappPhoneNumberId: null },
+                                {
+                                    NOT: {
+                                        type: {
+                                            in: [
+                                                "text", "image", "video", "audio", "document",
+                                                "sticker", "location", "contacts", "template",
+                                                "reaction", "unknown", "webhook", "message",
+                                                "status", "template_status"
+                                            ]
+                                        }
+                                    }
+                                }
+                            ]
+                        });
+
+                        where = {
+                            OR: orConditions
+                        };
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching vendor details for log filtering:", err);
+            }
         } else {
             // Fallback: no logs visible if no vendorId
             where = { id: "impossible-match" };

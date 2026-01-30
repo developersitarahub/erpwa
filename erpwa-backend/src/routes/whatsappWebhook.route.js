@@ -12,228 +12,10 @@ import {
 const router = express.Router();
 
 /* ===============================
-   HELPER: Log activity
+   HELPER: Log activity (MOVED TO SERVICE)
 =============================== */
-async function logActivity({
-  vendorId,
-  conversationId,
-  messageId,
-  phoneNumber,
-  type,
-  status,
-  event,
-  category,
-  error,
-  payload,
-  // New fields from WebhookLog
-  direction,
-  responseCode,
-  processingMs,
-}) {
-  try {
-    // 1. Extract Category from Payload (Deep check for pricing.category)
-    let finalCategory = category;
-    if (!finalCategory && payload) {
-      if (payload.pricing?.category) {
-        finalCategory = String(payload.pricing.category);
-      } else if (payload.category) {
-        finalCategory = String(payload.category);
-      } else if (payload.categoryId) {
-        finalCategory = String(payload.categoryId);
-      }
-    }
+import { logActivity } from "../services/activityLog.service.js";
 
-    // 2. Determine Message Type & Conversation Context
-    // We expect 'messageId' to be the WAMID (WhatsApp Message ID) for consistency
-    let messageType = type;
-    let dbVendorId = vendorId;
-    let dbConversationId = conversationId;
-    let dbPhoneNumber = phoneNumber;
-
-    // Check if we already have a log for this WAMID to inherit data
-    // 🕒 Race Condition Mitigation: Wait slightly to increase chance that "Sent" log is written
-    if (
-      status !== "sent" &&
-      status !== "received" &&
-      status !== "created" &&
-      status !== "started"
-    ) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-
-    let existingLog = null;
-    if (messageId) {
-      // Attempt 1: Immediate lookup
-      existingLog = await prisma.activityLog.findFirst({
-        where: { messageId: messageId },
-      });
-      console.log(
-        `🔎 Lookup 1 for messageId: ${messageId} -> Found: ${!!existingLog}`,
-      );
-
-      // Attempt 2: If not found, wait and try again (Race Condition Handling)
-      if (!existingLog) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-
-        existingLog = await prisma.activityLog.findFirst({
-          where: { messageId: messageId },
-        });
-        console.log(
-          `🔎 Lookup 2 for messageId: ${messageId} -> Found: ${!!existingLog}`,
-        );
-      }
-
-      if (existingLog) {
-        // Inherit connection details
-        if (!finalCategory) finalCategory = existingLog.category;
-        if (!dbVendorId) dbVendorId = existingLog.vendorId;
-        if (!dbConversationId) dbConversationId = existingLog.conversationId;
-        if (!dbPhoneNumber) dbPhoneNumber = existingLog.phoneNumber;
-
-        // Inherit type, BUT allow campaign check to override if it's generic
-        if (!messageType) messageType = existingLog.type;
-      }
-
-      // Always check Message table to resolve campaign details if not fully certain
-      // (or if we want to ensure "Campaign" type is reflected)
-      if (
-        !messageType ||
-        !dbConversationId ||
-        !messageType.includes("Campaign")
-      ) {
-        try {
-          const message = await prisma.message.findFirst({
-            where: { whatsappMessageId: messageId },
-            include: {
-              campaign: true, // ✅ Include campaign to determine type
-              conversation: {
-                select: {
-                  lead: { select: { leadCategory: true, categoryId: true } },
-                },
-              },
-            },
-          });
-
-          if (message) {
-            // Determine type based on Campaign
-            if (message.campaign) {
-              if (message.campaign.type === "IMAGE")
-                messageType = "Image Campaign";
-              else if (message.campaign.type === "TEMPLATE")
-                messageType = "Template Campaign";
-              else messageType = "Campaign";
-            } else if (!messageType) {
-              // Only use message type if we didn't have one and not campaign
-              messageType = message.messageType;
-            }
-
-            dbConversationId = dbConversationId || message.conversationId;
-            dbVendorId = dbVendorId || message.vendorId;
-
-            if (!finalCategory) {
-              if (message.conversation?.lead?.leadCategory?.name) {
-                finalCategory = message.conversation.lead.leadCategory.name;
-              }
-            }
-          }
-        } catch (err) {}
-      }
-    }
-
-    // Fallback type
-    if (!messageType) {
-      messageType = "system_event"; // Changed from "webhook"
-    }
-
-    // 3. Determine Final Status
-    let finalStatus = status;
-    if (
-      error &&
-      ![
-        "read",
-        "delivered",
-        "sent",
-        "received",
-        "created",
-        "started",
-        "completed",
-      ].includes(status)
-    ) {
-      finalStatus = "failed";
-    }
-    const errorData =
-      error &&
-      ![
-        "read",
-        "delivered",
-        "sent",
-        "received",
-        "created",
-        "started",
-        "completed",
-      ].includes(finalStatus)
-        ? error
-        : null;
-
-    // 4. Upsert Logic
-    const dataPayload = {
-      status: finalStatus,
-      event: event || existingLog?.event || "operation",
-      error: errorData,
-      payload: payload,
-      // ❌ No updatedAt
-
-      vendorId: dbVendorId,
-      conversationId: dbConversationId,
-      phoneNumber: dbPhoneNumber,
-      type: messageType,
-      category: finalCategory,
-      direction: direction || existingLog?.direction,
-      responseCode: responseCode || existingLog?.responseCode,
-      processingMs: (existingLog?.processingMs || 0) + (processingMs || 0),
-    };
-
-    let activityLog;
-    if (messageId && existingLog) {
-      // ✅ UPDATE existing log
-      activityLog = await prisma.activityLog.update({
-        where: { id: existingLog.id },
-        data: dataPayload,
-      });
-      console.log("📝 Activity Log Updated:", {
-        messageId,
-        status: finalStatus,
-        type: messageType,
-      });
-    } else {
-      // ✅ CREATE new log
-      activityLog = await prisma.activityLog.create({
-        data: {
-          ...dataPayload,
-          messageId, // Ensure messageId is set for create
-        },
-      });
-      console.log("✅ Activity Log Created:", {
-        messageId,
-        status: finalStatus,
-        type: messageType,
-      });
-    }
-
-    // 🔥 Emit real-time update
-    try {
-      const io = getIO();
-      io.emit("activity-log:new", {
-        ...activityLog,
-        createdAt: activityLog.createdAt.toISOString(),
-      });
-    } catch {}
-
-    return activityLog;
-  } catch (err) {
-    console.error("❌ Failed to log activity:", err.message);
-  }
-}
 
 /* ===============================
    WEBHOOK VERIFICATION (META)
@@ -294,6 +76,8 @@ router.post("/", async (req, res) => {
       logStatus = "ignored";
       await logActivity({
         vendorId,
+        whatsappBusinessId: null, // Can't resolve from empty payload
+        whatsappPhoneNumberId: null,
         event: "empty",
         status: logStatus,
         payload: req.body,
@@ -330,6 +114,8 @@ router.post("/", async (req, res) => {
       logStatus = "ignored";
       await logActivity({
         vendorId: null, // Can't resolve vendor
+        whatsappBusinessId: wabaId,
+        whatsappPhoneNumberId: phoneNumberId,
         event: "unknown",
         status: logStatus,
         payload: req.body,
@@ -551,7 +337,7 @@ router.post("/", async (req, res) => {
           io.to(`vendor:${vendor.id}`).emit("inbox:update", {
             conversationId: conversation.id,
           });
-        } catch {}
+        } catch { }
 
         /* 🔥 SAFE SOCKET EMIT (OPTIONAL) */
         try {
@@ -572,7 +358,7 @@ router.post("/", async (req, res) => {
             mimeType: fullMessage.media[0]?.mimeType,
             caption: fullMessage.media[0]?.caption,
           });
-        } catch (socketErr) {}
+        } catch (socketErr) { }
 
         // Log successful message processing
         await logActivity({
@@ -588,6 +374,8 @@ router.post("/", async (req, res) => {
           responseCode: 200,
           processingMs: Date.now() - startTime,
           type: msg.type,
+          whatsappBusinessId: wabaId,
+          whatsappPhoneNumberId: phoneNumberId || vendor.whatsappPhoneNumberId,
         });
       }
     }
@@ -620,6 +408,8 @@ router.post("/", async (req, res) => {
             direction: "outbound_status",
             processingMs: Date.now() - startTime,
             responseCode: 200,
+            whatsappBusinessId: wabaId,
+            whatsappPhoneNumberId: phoneNumberId || vendor.whatsappPhoneNumberId,
           });
           continue;
         }
@@ -651,6 +441,8 @@ router.post("/", async (req, res) => {
               waState === "failed" && waStatus.errors?.length
                 ? waStatus.errors[0].message
                 : null,
+            whatsappBusinessId: wabaId,
+            whatsappPhoneNumberId: phoneNumberId || vendor.whatsappPhoneNumberId,
           });
           continue;
         }
@@ -686,6 +478,8 @@ router.post("/", async (req, res) => {
           responseCode: 200,
           processingMs: Date.now() - startTime,
           // type can be inferred by logActivity via WAMID
+          whatsappBusinessId: wabaId,
+          whatsappPhoneNumberId: phoneNumberId || vendor.whatsappPhoneNumberId,
         });
 
         // ✅ Keep inbox ordering correct
@@ -704,7 +498,7 @@ router.post("/", async (req, res) => {
               status: waState,
             },
           );
-        } catch {}
+        } catch { }
       }
     }
 
@@ -746,6 +540,8 @@ router.post("/", async (req, res) => {
         responseCode: 200,
         processingMs: Date.now() - startTime,
         direction: "inbound",
+        whatsappBusinessId: wabaId, // Usually present for template updates
+        whatsappPhoneNumberId: phoneNumberId || vendor.whatsappPhoneNumberId,
       });
     }
 

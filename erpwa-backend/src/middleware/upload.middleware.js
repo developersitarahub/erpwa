@@ -5,6 +5,6 @@ const storage = multer.memoryStorage();
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 5MB (safe for WhatsApp images)
+    fileSize: 100 * 1024 * 1024, // 100MB (increased for video/documents)
   },
 });

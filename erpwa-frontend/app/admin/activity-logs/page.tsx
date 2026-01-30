@@ -25,6 +25,16 @@ import {
     Settings,
     Link,
     Link2Off,
+    Image as ImageIcon,
+    FileText,
+    MessageSquare,
+    Music,
+    Video,
+    File,
+    Sticker,
+    Megaphone,
+    UserPlus,
+    UserCheck,
 } from "lucide-react";
 
 type ActivityLog = {
@@ -298,26 +308,89 @@ export default function ActivityLogsPage() {
     };
 
     const getMessageTypeLabel = (type: string) => {
-        switch (type) {
-            case "text":
-                return "💬 Text";
-            case "image":
-                return "🖼️ Image";
+        // Normalize input
+        const lowerType = type?.toLowerCase() || "";
+
+        if (lowerType.includes("image")) {
+            return (
+                <span className="flex items-center gap-1.5">
+                    <ImageIcon className="w-4 h-4 text-purple-500" />
+                    {type}
+                </span>
+            );
+        }
+        if (lowerType.includes("template")) {
+            return (
+                <span className="flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-orange-500" />
+                    {type}
+                </span>
+            );
+        }
+        if (lowerType.includes("campaign")) {
+            return (
+                <span className="flex items-center gap-1.5">
+                    <Megaphone className="w-4 h-4 text-blue-500" />
+                    {type}
+                </span>
+            );
+        }
+        if (lowerType.includes("text")) {
+            return (
+                <span className="flex items-center gap-1.5">
+                    <MessageSquare className="w-4 h-4 text-gray-500" />
+                    {type}
+                </span>
+            );
+        }
+        if (lowerType.includes("user")) {
+            return (
+                <span className="flex items-center gap-1.5">
+                    {lowerType.includes("activated") ? <UserCheck className="w-4 h-4 text-green-500" /> : <UserPlus className="w-4 h-4 text-blue-500" />}
+                    {type}
+                </span>
+            );
+        }
+
+        // Exact matches for other types
+        switch (lowerType) {
             case "video":
-                return "🎥 Video";
-            case "document":
-                return "📄 Document";
+                return (
+                    <span className="flex items-center gap-1.5">
+                        <Video className="w-4 h-4 text-pink-500" />
+                        Video
+                    </span>
+                );
             case "audio":
-                return "🎵 Audio";
-            case "button":
-                return "🔘 Button";
+                return (
+                    <span className="flex items-center gap-1.5">
+                        <Music className="w-4 h-4 text-indigo-500" />
+                        Audio
+                    </span>
+                );
+            case "document":
+                return (
+                    <span className="flex items-center gap-1.5">
+                        <File className="w-4 h-4 text-yellow-500" />
+                        Document
+                    </span>
+                );
             case "sticker":
-                return "😀 Sticker";
-            case "template":
-                return "📋 Template";
+                return (
+                    <span className="flex items-center gap-1.5">
+                        <Sticker className="w-4 h-4 text-emerald-500" />
+                        Sticker
+                    </span>
+                );
+            case "system":
             case "system_event":
             case "webhook":
-                return "⚙️ System";
+                return (
+                    <span className="flex items-center gap-1.5">
+                        <Settings className="w-4 h-4 text-slate-500" />
+                        System
+                    </span>
+                );
             default:
                 return type || "-";
         }

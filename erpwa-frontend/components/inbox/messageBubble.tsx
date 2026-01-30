@@ -105,11 +105,10 @@ function AudioPlayer({ mediaUrl }: { mediaUrl: string }) {
               return (
                 <div
                   key={i}
-                  className={`flex-1 rounded-full transition-all ${
-                    isFilled
-                      ? "bg-primary"
-                      : "bg-primary/30 hover:bg-primary/40"
-                  }`}
+                  className={`flex-1 rounded-full transition-all ${isFilled
+                    ? "bg-primary"
+                    : "bg-primary/30 hover:bg-primary/40"
+                    }`}
                   style={{ height: `${height * 3}px`, minWidth: "2px" }}
                 />
               );
@@ -194,17 +193,15 @@ export default function MessageBubble({
     <motion.div
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      className={`flex items-end gap-2 ${
-        msg.sender === "executive" ? "justify-end" : "justify-start"
-      }`}
+      className={`flex items-end gap-2 ${msg.sender === "executive" ? "justify-end" : "justify-start"
+        }`}
     >
       <div
         className={`group relative shadow-sm overflow-hidden flex flex-col
-        ${
-          msg.sender === "executive"
+        ${msg.sender === "executive"
             ? "bg-wa-outbound rounded-br-none"
             : "bg-wa-inbound rounded-bl-none"
-        }
+          }
         rounded-lg max-w-[50%] sm:max-w-[40%] md:max-w-[35%] lg:max-w-[30%] xl:max-w-[25%]`}
       >
         {/* TEMPLATE HEADER (Rich Media) */}
@@ -425,7 +422,51 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* TEMPLATE BUTTONS */}
+        {/* CAROUSEL CARDS */}
+        {(msg.template?.templateType === "carousel" || (msg.carouselCards && msg.carouselCards.length > 0) || (msg.template?.carouselCards && msg.template.carouselCards.length > 0)) && (
+          <div className="flex overflow-x-auto gap-2 px-2 pb-2 mt-2 snap-x scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
+            {((msg.carouselCards || msg.template?.carouselCards) || []).map((card, idx) => (
+              <div
+                key={idx}
+                className="flex-shrink-0 w-[220px] bg-wa-inbound rounded-2xl shadow-sm border border-border/50 overflow-hidden snap-center flex flex-col"
+              >
+                <div className="p-3">
+                  {/* Card Media */}
+                  {(card.mediaUrl || card.s3Url) && (
+                    <div className="relative h-28 w-full bg-muted mb-3 rounded-lg overflow-hidden">
+                      {card.mimeType?.startsWith("video") ? (
+                        <video src={card.mediaUrl || card.s3Url} className="w-full h-full object-cover" controls={false} />
+                      ) : (
+                        <img src={card.mediaUrl || card.s3Url} alt={card.title} className="w-full h-full object-cover" />
+                      )}
+                    </div>
+                  )}
+                  {/* Card Content */}
+                  <div className="flex-1">
+                    {card.title && <p className="font-bold text-sm text-foreground line-clamp-1 mb-1">{idx + 1}. {card.title}</p>}
+                    {card.subtitle && <p className="text-xs text-muted-foreground line-clamp-2">{card.subtitle}</p>}
+                  </div>
+                </div>
+
+                {/* Card Button */}
+                {card.buttonText && (
+                  <button
+                    className="w-full py-2.5 text-sm text-[#0084ff] dark:text-[#53bdeb] font-semibold border-t border-border/30 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+                    onClick={() => {
+                      if (card.buttonType === "URL" && card.buttonValue) {
+                        window.open(card.buttonValue, "_blank");
+                      }
+                    }}
+                  >
+                    {card.buttonText}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* TEMPLATE BUTTONS (Standard) */}
         {msg.template?.buttons && msg.template.buttons.length > 0 && (
           <div className="border-t border-border/30 mt-1">
             {msg.template.buttons.map((btn, idx) => (

@@ -1,4 +1,5 @@
 import prisma from "../prisma.js";
+import { logActivity } from "./activityLog.service.js";
 
 class CampaignService {
   static async createTemplateCampaign(user, payload) {
@@ -161,6 +162,21 @@ class CampaignService {
         totalMessages: messages.length,
         status: scheduledAt ? "scheduled" : "active", // Auto-activate if not scheduled
       },
+    });
+
+    // 📝 Log campaign creation
+    await logActivity({
+      vendorId,
+      status: "success",
+      event: "Campaign Created",
+      type: "Template Campaign",
+      payload: {
+        campaignId: campaign.id,
+        campaignName: name,
+        type: "TEMPLATE",
+        recipientCount: validConversations.length,
+        scheduledAt: scheduledAt
+      }
     });
 
     return {
@@ -330,6 +346,21 @@ class CampaignService {
       },
     });
 
+    // 📝 Log campaign creation
+    await logActivity({
+      vendorId,
+      status: "success",
+      event: "Campaign Created",
+      type: "Image Campaign",
+      payload: {
+        campaignId: campaign.id,
+        campaignName: name,
+        type: "IMAGE",
+        recipientCount: conversations.length,
+        imageCount: safeImages.length
+      }
+    });
+
     return {
       success: true,
       campaignId: campaign.id,
@@ -351,6 +382,7 @@ class CampaignService {
     const campaigns = await prisma.campaign.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      include: { template: true },
     });
 
     // Enrich with actual message stats from Message table
