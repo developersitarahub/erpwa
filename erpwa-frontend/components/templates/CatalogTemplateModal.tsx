@@ -14,11 +14,14 @@ import { Select, SelectOption } from "@/components/select";
 import { Card } from "@/components/card";
 import { processMedia } from "@/lib/mediaProcessor";
 import { toast } from "react-toastify";
+import { toast } from "react-toastify";
+import { cn } from "@/lib/utils";
+import GalleryModal from "@/components/chatbot/GalleryModal";
 
 interface CatalogTemplateModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (templateData: any) => void;
+    onSubmit: (templateData: any) => Promise<void> | void;
     initialData?: any;
 }
 
@@ -45,6 +48,13 @@ export default function CatalogTemplateModal({ isOpen, onClose, onSubmit, initia
     const [language, setLanguage] = useState('en_US');
     const [bodyText, setBodyText] = useState('');
     const [footerText, setFooterText] = useState('');
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Gallery Modal State
+    const [isGalleryOpen, setIsGalleryOpen] = useState(false);
+    const [currentCardIndex, setCurrentCardIndex] = useState<number | null>(null);
     const [showMobilePreview, setShowMobilePreview] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -101,9 +111,36 @@ export default function CatalogTemplateModal({ isOpen, onClose, onSubmit, initia
                     setCatalogProducts(initialData.catalogProducts.map((p: any) => p.productId || ''));
                 }
             }
-        } else {
-            setTemplateType('carousel');
+        } else if (isOpen) {
+            // Reset form for create mode - ONLY if modal is open
             setTemplateName('');
+            setDisplayName('');
+            setCategory('MARKETING');
+            setLanguage('en');
+            setBodyText('');
+            setFooterText('');
+
+            // Reset Standard
+            setHeaderType('TEXT');
+            setHeaderText('');
+            setHeaderFile(null);
+            setHeaderPreview(null);
+            setButtons([]);
+
+            // Reset Catalog
+            setCatalogProducts(['']);
+
+            // Reset Carousel
+            setCarouselCards([{
+                title: '',
+                subtitle: '',
+                image: null,
+                imagePreview: null,
+                button: { text: '', url: '' }
+            }]);
+
+            // Default to carousel if that's what we want, or standard
+            setTemplateType('carousel');
         }
     }, [initialData, isOpen]);
 
@@ -122,6 +159,27 @@ export default function CatalogTemplateModal({ isOpen, onClose, onSubmit, initia
                 reader.readAsDataURL(file);
             }
         }
+    };
+
+    const handleGallerySelect = (url: string | string[]) => {
+        const selectedUrl = Array.isArray(url) ? url[0] : url;
+
+        if (currentCardIndex !== null) {
+            // Edit Carousel Card Image
+            const updated = [...carouselCards];
+            updated[currentCardIndex].image = null; // Clear file as we use URL
+            updated[currentCardIndex].imagePreview = selectedUrl;
+            setCarouselCards(updated);
+        } else {
+            // Edit Header Image (if applicable in future, currently only handling cards per user request)
+            // But let's support header too if needed
+            if (headerType === 'IMAGE') {
+                setHeaderFile(null);
+                setHeaderPreview(selectedUrl);
+            }
+        }
+        setIsGalleryOpen(false);
+        setCurrentCardIndex(null);
     };
 
     const handleAddProduct = () => {
@@ -167,9 +225,42 @@ export default function CatalogTemplateModal({ isOpen, onClose, onSubmit, initia
         setCarouselCards(updated);
     };
 
+    // Standard Buttons Helpers
+    const handleAddButton = () => {
+        if (buttons.length < 3) {
+            setButtons([...buttons, { type: 'QUICK_REPLY', text: '' }]);
+        }
+    };
+
+    const handleRemoveButton = (index: number) => {
+        setButtons(buttons.filter((_, i) => i !== index));
+    };
+
+    const handleButtonChange = (index: number, field: string, value: any) => {
+        const updated = [...buttons];
+        (updated[index] as any)[field] = value;
+
+        // Reset fields when type changes
+        if (field === 'type') {
+            updated[index].text = '';
+            updated[index].value = '';
+            delete updated[index].flowId;
+            delete updated[index].flowAction;
+
+            if (value === 'FLOW') {
+                updated[index].text = 'View Flow';
+                updated[index].flowAction = 'navigate';
+            }
+        }
+
+        setButtons(updated);
+    };
+
     const handleSubmit = async () => {
-        setIsSubmitting(true);
         try {
+            setIsSubmitting(true);
+            setError(null);
+
             const formData = new FormData();
             formData.append('metaTemplateName', templateName);
             formData.append('displayName', displayName);
@@ -179,6 +270,29 @@ export default function CatalogTemplateModal({ isOpen, onClose, onSubmit, initia
             if (footerText) formData.append('footerText', footerText);
             formData.append('templateType', templateType);
 
+            // Standard template
+            if (templateType === 'standard') {
+                formData.append('header.type', headerType);
+                if (headerType === 'TEXT' && headerText) {
+                    formData.append('header.text', headerText);
+                } else if (headerType !== 'TEXT' && headerFile) {
+                    formData.append('header.file', headerFile);
+                }
+
+                buttons.forEach((btn, index) => {
+                    formData.append(`buttons[${index}][type]`, btn.type);
+                    formData.append(`buttons[${index}][text]`, btn.text);
+                    if (btn.type === 'URL' || btn.type === 'PHONE_NUMBER') {
+                        formData.append(`buttons[${index}][value]`, btn.value || '');
+                    }
+                    if (btn.type === 'FLOW') {
+                        if (btn.flowId) formData.append(`buttons[${index}][flowId]`, btn.flowId);
+                        if (btn.flowAction) formData.append(`buttons[${index}][flowAction]`, btn.flowAction);
+                    }
+                });
+            }
+
+            // Catalog products
             if (templateType === 'catalog') {
                 const products = catalogProducts.filter(p => p.trim() !== '');
                 formData.append('catalogProducts', JSON.stringify(products));
@@ -218,374 +332,624 @@ export default function CatalogTemplateModal({ isOpen, onClose, onSubmit, initia
             }
 
             await onSubmit(formData);
-        } catch (error) {
-            console.error(error);
+        } catch (err: any) {
+            console.error(err);
+            const msg = err.message || 'An error occurred';
+            setError(msg);
+            toast.error(msg);
         } finally {
             setIsSubmitting(false);
         }
     };
 
     return (
-        <AnimatePresence>
-            {isOpen && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-[2px]"
-                    onClick={onClose}
-                >
-                    <motion.div
-                        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                        className="bg-background w-full max-w-6xl sm:rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col h-full sm:h-[90vh]"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        {/* Header */}
-                        <div className="p-4 sm:p-5 border-b border-border flex justify-between items-center shrink-0 bg-muted/10">
-                            <div>
-                                <h2 className="text-lg font-bold">
-                                    {initialData ? "Edit Template" : "New Template"}
-                                </h2>
-                                <p className="text-xs text-muted-foreground/80">
-                                    {templateType === 'carousel' ? "Multi-card carousel template" :
-                                        templateType === 'catalog' ? "Multi-product catalog template" :
-                                            "Design your WhatsApp message layout"}
-                                </p>
+        <>
+            <AnimatePresence>
+                {isOpen && (
+                    <>
+                        <motion.div
+                            key="backdrop"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+                            onClick={onClose}
+                        />
+                        <motion.div
+                            key="modal"
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-6xl h-[90vh] bg-white dark:bg-gray-900 rounded-2xl shadow-2xl z-50 flex flex-col"
+                        >
+                            {/* Header */}
+                            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 flex items-center justify-between flex-shrink-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+                                        {templateType === 'standard' && <ImageIcon className="w-5 h-5 text-white" />}
+                                        {templateType === 'catalog' && <ShoppingBag className="w-5 h-5 text-white" />}
+                                        {templateType === 'carousel' && <Layers className="w-5 h-5 text-white" />}
+                                    </div>
+                                    <div>
+                                        <h2 className="text-2xl font-bold text-white">
+                                            Create Template
+                                        </h2>
+                                        <p className="text-sm text-blue-100">
+                                            {templateType === 'standard' && 'Standard message template'}
+                                            {templateType === 'catalog' && 'Multi-product catalog template'}
+                                            {templateType === 'carousel' && 'Multi-card carousel template'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+                                    <X className="w-5 h-5 text-white" />
+                                </button>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="lg:hidden h-8 px-3 text-xs flex items-center gap-2"
-                                    onClick={() => setShowMobilePreview(!showMobilePreview)}
-                                >
-                                    <Eye className="w-3.5 h-3.5" /> Preview
-                                </Button>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="rounded-full hover:bg-muted text-muted-foreground"
-                                    onClick={onClose}
-                                >
-                                    <X className="w-5 h-5" />
-                                </Button>
-                            </div>
-                        </div>
 
-                        {/* Body Grid */}
-                        <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 bg-muted/5 divide-y lg:divide-y-0 lg:divide-x divide-border/50">
+                            {/* Split View */}
+                            <div className="grid grid-cols-1 lg:grid-cols-2 flex-1 overflow-hidden">
+                                {/* LEFT: Form */}
+                                <div className="p-6 space-y-4 overflow-y-auto border-r border-gray-200 dark:border-gray-800">
+                                    {error && (
+                                        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-900 rounded-lg text-sm text-red-600 dark:text-red-400">
+                                            {error}
+                                        </div>
+                                    )}
+                                    {/* Template Type */}
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-900 dark:text-white mb-3">
+                                            Template Type
+                                        </label>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {TEMPLATE_TYPES.map((type) => {
+                                                const Icon = type.icon;
+                                                return (
+                                                    <button
+                                                        key={type.id}
+                                                        onClick={() => setTemplateType(type.id)}
+                                                        className={`p-3 rounded-xl border-2 transition-all ${templateType === type.id
+                                                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-950'
+                                                            : 'border-gray-200 dark:border-gray-700 hover:border-blue-300'
+                                                            }`}
+                                                    >
+                                                        <Icon className={`w-5 h-5 mx-auto mb-1 ${templateType === type.id ? 'text-blue-600' : 'text-gray-600'
+                                                            }`} />
+                                                        <div className="text-xs font-semibold text-gray-900 dark:text-white">
+                                                            {type.name}
+                                                        </div>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
 
-                            {/* LEFT: Form */}
-                            <div className="lg:col-span-7 xl:col-span-8 p-4 sm:p-6 overflow-y-auto space-y-6 scrollbar-thin">
-                                <div className="space-y-6 max-w-3xl">
+                                    {/* Basic Info */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-900 dark:text-white mb-1.5">
+                                                Template Name *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={templateName}
+                                                onChange={(e) => setTemplateName(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
+                                                placeholder="summer_sale_2026"
+                                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                                            />
+                                            <p className="text-xs text-gray-500 mt-1">Lowercase, underscores only</p>
+                                        </div>
 
-                                    {/* 1. Basic Info */}
-                                    <div className="space-y-4">
-                                        <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground/80">
-                                            <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">1</div>
-                                            Basic Information
-                                        </h3>
-                                        <div className="pl-8 space-y-4">
-                                            {/* Template Type Selector */}
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-medium">Template Type</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {TEMPLATE_TYPES.map((type) => {
-                                                        const Icon = type.icon;
-                                                        return (
-                                                            <div
-                                                                key={type.id}
-                                                                onClick={() => setTemplateType(type.id)}
-                                                                className={cn(
-                                                                    "px-3 py-2 rounded-md border text-xs cursor-pointer transition-all flex items-center gap-2",
-                                                                    templateType === type.id
-                                                                        ? "bg-primary/10 border-primary text-primary font-medium shadow-sm"
-                                                                        : "bg-background border-border hover:bg-muted"
-                                                                )}
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-900 dark:text-white mb-1.5">
+                                                Display Name *
+                                            </label>
+                                            <input
+                                                type="text"
+                                                value={displayName}
+                                                onChange={(e) => setDisplayName(e.target.value)}
+                                                placeholder="Summer Sale 2026"
+                                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Standard: Header Type */}
+                                    {templateType === 'standard' && (
+                                        <div>
+                                            <label className="block text-xs font-semibold text-gray-900 dark:text-white mb-1.5">
+                                                Header Type
+                                            </label>
+                                            <select
+                                                value={headerType}
+                                                onChange={(e) => setHeaderType(e.target.value)}
+                                                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                            >
+                                                <option value="TEXT">Text</option>
+                                                <option value="IMAGE">Image</option>
+                                                <option value="VIDEO">Video</option>
+                                                <option value="DOCUMENT">Document</option>
+                                            </select>
+
+                                            {headerType === 'TEXT' ? (
+                                                <input
+                                                    type="text"
+                                                    value={headerText}
+                                                    onChange={(e) => setHeaderText(e.target.value)}
+                                                    placeholder="Header text"
+                                                    className="w-full mt-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                                />
+                                            ) : (
+                                                <div className="mt-2">
+                                                    <input
+                                                        ref={fileInputRef}
+                                                        type="file"
+                                                        accept={headerType === 'IMAGE' ? 'image/*' : headerType === 'VIDEO' ? 'video/*' : '.pdf,.doc,.docx'}
+                                                        onChange={handleFileChange}
+                                                        className="hidden"
+                                                    />
+                                                    <button
+                                                        onClick={() => fileInputRef.current?.click()}
+                                                        className="w-full px-3 py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-400 hover:border-blue-500 transition-colors flex items-center justify-center gap-2"
+                                                    >
+                                                        <Upload className="w-4 h-4" />
+                                                        {headerFile ? headerFile.name : `Upload ${headerType.toLowerCase()}`}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Body Text */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-900 dark:text-white mb-1.5">
+                                            Message Body *
+                                        </label>
+                                        <textarea
+                                            value={bodyText}
+                                            onChange={(e) => setBodyText(e.target.value)}
+                                            rows={3}
+                                            placeholder="Enter your message..."
+                                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 resize-none"
+                                        />
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-900 dark:text-white mb-1.5">
+                                            Footer (Optional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={footerText}
+                                            onChange={(e) => setFooterText(e.target.value)}
+                                            placeholder="Reply STOP to unsubscribe"
+                                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                                        />
+                                    </div>
+
+                                    {/* Standard: Buttons */}
+                                    {templateType === 'standard' && (
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="text-xs font-semibold text-gray-900 dark:text-white">
+                                                    Buttons ({buttons.length}/3)
+                                                </label>
+                                                <button
+                                                    onClick={handleAddButton}
+                                                    disabled={buttons.length >= 3}
+                                                    className="flex items-center gap-1 px-2 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded text-xs font-medium"
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                    Add Button
+                                                </button>
+                                            </div>
+                                            <div className="space-y-3">
+                                                {buttons.map((btn, index) => (
+                                                    <div key={index} className="p-3 border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800/50">
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-xs font-medium text-gray-700 dark:text-gray-300">Button {index + 1}</span>
+                                                            <button onClick={() => handleRemoveButton(index)} className="text-red-500 hover:text-red-600">
+                                                                <Trash2 className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+
+                                                        <div className="grid grid-cols-2 gap-2 mb-2">
+                                                            <select
+                                                                value={btn.type}
+                                                                onChange={(e) => handleButtonChange(index, 'type', e.target.value)}
+                                                                className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
                                                             >
-                                                                <Icon className="w-3.5 h-3.5" />
-                                                                {type.name}
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
+                                                                <option value="QUICK_REPLY">Quick Reply</option>
+                                                                <option value="URL">URL</option>
+                                                                <option value="PHONE_NUMBER">Phone Number</option>
+                                                                <option value="FLOW">WhatsApp Flow</option>
+                                                            </select>
 
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-medium">Template Name <span className="text-red-500">*</span></label>
-                                                    <Input
-                                                        value={templateName}
-                                                        onChange={(e) => setTemplateName(e.target.value.toLowerCase().replace(/\s+/g, '_'))}
-                                                        placeholder="summer_sale_2026"
-                                                    />
-                                                    <p className="text-[10px] text-muted-foreground">Lowercase, underscores only</p>
-                                                </div>
-                                                <div className="space-y-1.5">
-                                                    <label className="text-xs font-medium">Display Name <span className="text-red-500">*</span></label>
-                                                    <Input
-                                                        value={displayName}
-                                                        onChange={(e) => setDisplayName(e.target.value)}
-                                                        placeholder="Summer Sale 2026"
-                                                    />
-                                                </div>
+                                                            <input
+                                                                type="text"
+                                                                value={btn.text}
+                                                                onChange={(e) => handleButtonChange(index, 'text', e.target.value)}
+                                                                placeholder="Button Text"
+                                                                className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                                                            />
+                                                        </div>
+
+                                                        {/* Button Details */}
+                                                        {btn.type === 'URL' && (
+                                                            <input
+                                                                type="url"
+                                                                value={btn.value}
+                                                                onChange={(e) => handleButtonChange(index, 'value', e.target.value)}
+                                                                placeholder="https://example.com"
+                                                                className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                                                            />
+                                                        )}
+                                                        {btn.type === 'PHONE_NUMBER' && (
+                                                            <input
+                                                                type="tel"
+                                                                value={btn.value}
+                                                                onChange={(e) => handleButtonChange(index, 'value', e.target.value)}
+                                                                placeholder="+1234567890"
+                                                                className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                                                            />
+                                                        )}
+                                                        {btn.type === 'FLOW' && (
+                                                            <div className="space-y-2">
+                                                                <select
+                                                                    value={btn.flowId || ''}
+                                                                    onChange={(e) => handleButtonChange(index, 'flowId', e.target.value)}
+                                                                    className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                                                                >
+                                                                    <option value="">Select a Flow...</option>
+                                                                    {publishedFlows.map((f, i) => (
+                                                                        <option key={f.id || i} value={f.id}>{f.name}</option>
+                                                                    ))}
+                                                                </select>
+                                                                <select
+                                                                    value={btn.flowAction || 'navigate'}
+                                                                    onChange={(e) => handleButtonChange(index, 'flowAction', e.target.value)}
+                                                                    className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800"
+                                                                >
+                                                                    <option value="navigate">Navigate</option>
+                                                                    <option value="data_exchange">Data Exchange</option>
+                                                                </select>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
                                             </div>
                                         </div>
-                                    </div>
+                                    )}
 
-                                    <div className="w-full h-px bg-border/40"></div>
-
-                                    {/* 2. Message Content */}
-                                    <div className="space-y-4">
-                                        <h3 className="text-sm font-semibold flex items-center gap-2 text-foreground/80">
-                                            <div className="w-6 h-6 rounded bg-primary/10 flex items-center justify-center text-primary text-xs font-bold">2</div>
-                                            Message Content
-                                        </h3>
-                                        <div className="pl-8 space-y-5">
-
-                                            {/* Body */}
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-medium">Body Message <span className="text-red-500">*</span></label>
-                                                <textarea
-                                                    value={bodyText}
-                                                    onChange={(e) => setBodyText(e.target.value)}
-                                                    className="w-full min-h-[120px] p-3 border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/20 resize-none font-sans text-sm leading-relaxed border-input"
-                                                    placeholder="Enter your message..."
-                                                />
+                                    {/* Catalog Products */}
+                                    {templateType === 'catalog' && (
+                                        <div>
+                                            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 mb-4">
+                                                <p className="text-xs text-blue-600 dark:text-blue-400">
+                                                    ℹ️ <strong>Note:</strong> Enter product IDs from your Meta Business Catalog.
+                                                    Images, prices, and descriptions will be automatically pulled from the catalog!
+                                                </p>
                                             </div>
-
-                                            {/* Footer */}
-                                            <div className="space-y-2">
-                                                <label className="text-xs font-medium">Footer (Optional)</label>
-                                                <Input
-                                                    value={footerText}
-                                                    onChange={(e) => setFooterText(e.target.value)}
-                                                    placeholder="Reply STOP to unsubscribe"
-                                                />
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="text-xs font-semibold text-gray-900 dark:text-white">
+                                                    Products ({catalogProducts.filter(p => p.trim()).length}/30)
+                                                </label>
+                                                <button
+                                                    onClick={handleAddProduct}
+                                                    disabled={catalogProducts.length >= 30}
+                                                    className="flex items-center gap-1 px-2 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded text-xs font-medium"
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                    Add
+                                                </button>
                                             </div>
-
-                                            {/* CAROUSEL CARDS */}
-                                            {templateType === 'carousel' && (
-                                                <div className="space-y-3">
-                                                    <div className="flex items-center justify-between">
-                                                        <label className="text-xs font-semibold">Cards ({carouselCards.length}/10)</label>
-                                                        <Button variant="ghost" size="sm" onClick={handleAddCard} disabled={carouselCards.length >= 10} className="text-xs flex items-center gap-1 text-primary hover:text-primary">
-                                                            <Plus className="w-3 h-3" /> Add Card
-                                                        </Button>
+                                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                                                {catalogProducts.map((product, index) => (
+                                                    <div key={index} className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={product}
+                                                            onChange={(e) => handleProductChange(index, e.target.value)}
+                                                            placeholder={`Product Retailer ID ${index + 1}`}
+                                                            className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-white"
+                                                        />
+                                                        <button
+                                                            onClick={() => handleRemoveProduct(index)}
+                                                            className="p-2 hover:bg-red-100 dark:hover:bg-red-900 text-red-600 rounded-lg"
+                                                        >
+                                                            <Trash2 className="w-4 h-4" />
+                                                        </button>
                                                     </div>
-                                                    <div className="space-y-3">
-                                                        {carouselCards.map((card, index) => (
-                                                            <div key={index} className="p-3 border rounded-lg bg-card/50 space-y-3 relative group">
-                                                                <div className="absolute right-2 top-2">
-                                                                    {carouselCards.length > 1 && (
-                                                                        <Button variant="ghost" size="icon" onClick={() => handleRemoveCard(index)} className="h-6 w-6 text-muted-foreground hover:text-destructive">
-                                                                            <Trash2 className="w-3 h-3" />
-                                                                        </Button>
-                                                                    )}
-                                                                </div>
-                                                                <div className="grid grid-cols-1 gap-3">
-                                                                    <div className="flex gap-2">
-                                                                        <div className="flex-1 space-y-1">
-                                                                            <Input
-                                                                                value={card.title}
-                                                                                onChange={(e) => handleCardChange(index, 'title', e.target.value)}
-                                                                                placeholder="Card title"
-                                                                            />
-                                                                        </div>
-                                                                        <div className="flex-1 space-y-1">
-                                                                            <Input
-                                                                                value={card.subtitle}
-                                                                                onChange={(e) => handleCardChange(index, 'subtitle', e.target.value)}
-                                                                                placeholder="Card subtitle"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
+                                                ))}
+                                            </div>
 
-                                                                    <div className="flex gap-4 items-center">
-                                                                        <div className="flex-shrink-0">
-                                                                            {card.imagePreview ? (
-                                                                                <img src={card.imagePreview} className="w-16 h-16 object-cover rounded-md border" />
-                                                                            ) : (
-                                                                                <div className="w-16 h-16 bg-muted rounded-md flex items-center justify-center">
-                                                                                    <ImageIcon className="w-6 h-6 text-muted-foreground/50" />
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                        <div className="flex-1">
-                                                                            <input
-                                                                                type="file"
-                                                                                accept="image/*"
-                                                                                onChange={(e) => handleFileChange(e, index)}
-                                                                                className="text-xs text-muted-foreground file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20"
-                                                                            />
-                                                                        </div>
-                                                                    </div>
-
-                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                        <Input
-                                                                            value={card.button.text}
-                                                                            onChange={(e) => handleCardChange(index, 'button.text', e.target.value)}
-                                                                            placeholder="Button Text"
-                                                                        />
-                                                                        <Input
-                                                                            value={card.button.url}
-                                                                            onChange={(e) => handleCardChange(index, 'button.url', e.target.value)}
-                                                                            placeholder="Button URL"
-                                                                        />
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        ))}
+                                            {/* Compulsory Button Indicator */}
+                                            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                                <label className="block text-xs font-semibold text-gray-900 dark:text-white mb-1.5 flex items-center gap-2">
+                                                    Action Button
+                                                    <span className="text-[10px] font-normal px-2 py-0.5 bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 rounded-full">
+                                                        Compulsory
+                                                    </span>
+                                                </label>
+                                                <div className="relative">
+                                                    <input
+                                                        type="text"
+                                                        value="View Catalog"
+                                                        disabled
+                                                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-sm text-gray-500 dark:text-gray-400 cursor-not-allowed"
+                                                    />
+                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                                                        Default
                                                     </div>
                                                 </div>
-                                            )}
+                                                <p className="text-[10px] text-gray-500 mt-1">
+                                                    This button is automatically added to all catalog templates
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
 
-                                            {/* CATALOG PRODUCTS */}
-                                            {templateType === 'catalog' && (
-                                                <div className="space-y-3">
-                                                    <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3">
-                                                        <p className="text-xs text-blue-600">Enter product IDs from your Meta Business Catalog.</p>
-                                                    </div>
-                                                    <div className="flex items-center justify-between">
-                                                        <label className="text-xs font-semibold">Products ({catalogProducts.filter(p => p.trim()).length}/30)</label>
-                                                        <Button variant="ghost" size="sm" onClick={handleAddProduct} disabled={catalogProducts.length >= 30} className="text-xs flex items-center gap-1 text-primary hover:text-primary">
-                                                            <Plus className="w-3 h-3" /> Add Product
-                                                        </Button>
-                                                    </div>
-                                                    <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                                                        {catalogProducts.map((product, index) => (
-                                                            <div key={index} className="flex gap-2">
-                                                                <Input
-                                                                    value={product}
-                                                                    onChange={(e) => handleProductChange(index, e.target.value)}
-                                                                    placeholder={`Product Retailer ID ${index + 1}`}
-                                                                    className="flex-1"
-                                                                />
-                                                                <Button variant="ghost" size="icon" onClick={() => handleRemoveProduct(index)} className="text-destructive hover:bg-destructive/10">
+                                    {/* Carousel Cards */}
+                                    {templateType === 'carousel' && (
+                                        <div>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <label className="text-xs font-semibold text-gray-900 dark:text-white">
+                                                    Cards ({carouselCards.length}/10)
+                                                </label>
+                                                <button
+                                                    onClick={handleAddCard}
+                                                    disabled={carouselCards.length >= 10}
+                                                    className="flex items-center gap-1 px-2 py-1 bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white rounded text-xs font-medium"
+                                                >
+                                                    <Plus className="w-3 h-3" />
+                                                    Add Card
+                                                </button>
+                                            </div>
+                                            <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
+                                                {carouselCards.map((card, index) => (
+                                                    <div key={index} className="p-3 border border-border rounded-lg bg-card/50">
+                                                        <div className="flex items-center justify-between mb-3">
+                                                            <span className="text-xs font-semibold text-foreground">Card {index + 1}</span>
+                                                            {carouselCards.length > 1 && (
+                                                                <button onClick={() => handleRemoveCard(index)} className="text-destructive hover:text-destructive/80">
                                                                     <Trash2 className="w-4 h-4" />
-                                                                </Button>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-3">
+                                                            <InputField
+                                                                label="Card Title *"
+                                                                value={card.title}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCardChange(index, 'title', e.target.value)}
+                                                                placeholder="Card title"
+                                                            />
+                                                            <InputField
+                                                                label="Card Description"
+                                                                value={card.subtitle}
+                                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCardChange(index, 'subtitle', e.target.value)}
+                                                                placeholder="Card description"
+                                                            />
+                                                            <div className="space-y-1.5">
+                                                                <label className="text-xs font-medium text-foreground/80">Card Image *</label>
+                                                                <div className="flex flex-col gap-2">
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        onChange={(e) => handleFileChange(e, index)}
+                                                                        className="w-full text-xs text-foreground file:mr-4 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                                                    />
+                                                                    <div className="text-center text-xs text-gray-400 font-medium">- OR -</div>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setCurrentCardIndex(index);
+                                                                            setIsGalleryOpen(true);
+                                                                        }}
+                                                                        className="flex items-center justify-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-xs font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                                                                    >
+                                                                        <ImageIcon className="w-4 h-4" />
+                                                                        Select from Media Gallery
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        ))}
+                                                            <div className="grid grid-cols-2 gap-2">
+                                                                <InputField
+                                                                    label="Button Text *"
+                                                                    value={card.button.text}
+                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCardChange(index, 'button.text', e.target.value)}
+                                                                    placeholder="Button text"
+                                                                />
+                                                                <InputField
+                                                                    label="Button URL *"
+                                                                    value={card.button.url}
+                                                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleCardChange(index, 'button.url', e.target.value)}
+                                                                    placeholder="Button URL"
+                                                                />
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
 
-                                {/* Form Footer */}
-                                <div className="pt-6 pb-2 border-t border-border flex justify-end gap-3 mt-8">
-                                    <Button variant="outline" onClick={onClose}>Cancel</Button>
-                                    <Button
-                                        className="bg-green-600 hover:bg-green-700 text-white min-w-[150px] shadow-lg shadow-green-500/20"
-                                        onClick={handleSubmit}
-                                        disabled={isSubmitting}
-                                    >
-                                        {isSubmitting ? (
-                                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                                        ) : (
-                                            <CheckCircle className="w-4 h-4 mr-2" />
-                                        )}
-                                        {initialData ? "Update Template" : "Submit for Approval"}
-                                    </Button>
-                                </div>
-                            </div>
-
-                            {/* RIGHT: Phone Preview */}
-                            <div className={cn(
-                                "bg-muted/50 p-8 flex-col items-center justify-center relative border-l border-border/50 overflow-hidden transition-all",
-                                "lg:flex lg:col-span-5 xl:col-span-4",
-                                showMobilePreview ? "flex fixed inset-0 z-50 pt-24 pb-8 bg-background" : "hidden"
-                            )}>
-                                {showMobilePreview && (
-                                    <Button variant="outline" className="absolute top-4 right-4 z-50 lg:hidden shadow-lg" onClick={() => setShowMobilePreview(false)}>
-                                        Close Preview
-                                    </Button>
-                                )}
-                                <div className="absolute inset-0 pattern-dots opacity-10 pointer-events-none"></div>
-
-                                {/* Phone Frame */}
-                                <div className="relative mx-auto w-full max-w-[280px] border-[10px] border-border rounded-[48px] shadow-2xl bg-card transition-all duration-500 overflow-hidden transform lg:scale-[1.02]">
-                                    <div className="h-6 bg-card flex justify-between items-center px-6 pt-3 z-20 relative">
-                                        <span className="text-[10px] text-muted-foreground font-semibold">9:41</span>
-                                        <div className="flex gap-1.5 opacity-50 italic font-bold text-[10px] text-muted-foreground">WhatsApp</div>
+                                {/* RIGHT: Preview */}
+                                <div className="bg-gray-50 dark:bg-gray-950 p-6 overflow-y-auto border-l border-gray-200 dark:border-gray-800">
+                                    <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                        <Eye className="w-4 h-4" />
+                                        WhatsApp Preview
                                     </div>
 
-                                    <div className="relative bg-muted/30 p-3 pt-4 min-h-[500px] max-h-[550px] overflow-y-auto custom-scrollbar flex flex-col">
-                                        <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px]"></div>
+                                    <div className="mx-auto max-w-[340px] bg-white dark:bg-gray-900 rounded-[30px] border-[6px] border-gray-300 dark:border-gray-700 shadow-2xl overflow-hidden relative">
+                                        {/* Notch/Status Bar Area */}
+                                        <div className="h-6 bg-gray-800 flex items-center justify-center">
+                                            <div className="w-16 h-3 bg-black rounded-b-xl"></div>
+                                        </div>
 
-                                        <div className="relative z-10 w-full flex flex-col gap-1 mt-1 animate-in fade-in zoom-in-95 duration-500">
-                                            <div className="bg-card rounded-2xl rounded-tl-none shadow-lg overflow-hidden border border-border group">
-                                                <div className="p-1">
-                                                    {/* Carousel Preview */}
-                                                    {templateType === 'carousel' && (
-                                                        <div className="py-2 px-1 flex gap-2 overflow-x-auto pb-4 snap-x">
-                                                            {carouselCards.map((card, idx) => (
-                                                                <div key={idx} className="min-w-[200px] border border-border rounded-lg overflow-hidden bg-card shadow-sm snap-center">
-                                                                    <div className="h-28 bg-muted/50 flex items-center justify-center overflow-hidden relative">
-                                                                        {card.imagePreview ? (
-                                                                            <img src={card.imagePreview} alt="" className="w-full h-full object-cover" />
-                                                                        ) : (<Layers className="w-6 h-6 opacity-20 text-muted-foreground" />)}
+                                        {/* Header */}
+                                        <div className="bg-[#008069] dark:bg-[#202c33] text-white p-3 flex items-center gap-3 shadow-md z-10 relative">
+                                            <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center">
+                                                <ShoppingBag className="w-4 h-4" />
+                                            </div>
+                                            <div>
+                                                <div className="font-semibold text-sm">Your Business</div>
+                                                <div className="text-[10px] opacity-80">Business Account</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Chat Area */}
+                                        <div className="bg-[#efeae2] dark:bg-[#0b141a] p-3 min-h-[400px] relative">
+                                            <div className="bg-white dark:bg-[#202c33] rounded-lg shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] overflow-hidden max-w-[90%] mb-2 rounded-tl-none">
+                                                {/* Standard: Header */}
+                                                {templateType === 'standard' && headerType !== 'TEXT' && headerPreview && (
+                                                    <div className="p-1 pb-0">
+                                                        <img src={headerPreview} alt="Header" className="w-full h-36 object-cover rounded-md" />
+                                                    </div>
+                                                )}
+                                                {templateType === 'standard' && headerType === 'TEXT' && headerText && (
+                                                    <div className="px-3 pt-2 pb-0 font-bold text-sm text-[#111b21] dark:text-[#e9edef]">{headerText}</div>
+                                                )}
+
+                                                {/* Body */}
+                                                {bodyText && <div className="px-3 py-2 text-sm text-[#111b21] dark:text-[#e9edef] whitespace-pre-wrap">{bodyText}</div>}
+
+                                                {/* Catalog: Products */}
+                                                {templateType === 'catalog' && catalogProducts.filter(p => p.trim()).length > 0 && (
+                                                    <div className="px-3 py-2">
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {catalogProducts.filter(p => p.trim()).slice(0, 4).map((product, idx) => (
+                                                                <div key={idx} className="aspect-square bg-gray-100 dark:bg-gray-700 rounded-lg relative overflow-hidden group">
+                                                                    <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-800">
+                                                                        <ShoppingBag className="w-6 h-6 text-gray-400" />
                                                                     </div>
-                                                                    <div className="p-2">
-                                                                        <div className="font-bold text-xs text-foreground">{card.title || "Title"}</div>
-                                                                        <div className="text-[10px] opacity-70 text-muted-foreground">{card.subtitle || "Subtitle"}</div>
-                                                                        {card.button.text && (
-                                                                            <div className="mt-2 text-center text-[10px] text-primary font-bold border-t border-border/50 pt-1 flex items-center justify-center gap-1">
-                                                                                <Globe className="w-3 h-3" />
-                                                                                {card.button.text}
-                                                                            </div>
-                                                                        )}
+                                                                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-1 backdrop-blur-[2px]">
+                                                                        <div className="text-[10px] text-white truncate font-medium text-center">{product}</div>
                                                                     </div>
                                                                 </div>
                                                             ))}
                                                         </div>
-                                                    )}
-                                                </div>
-
-                                                <div className="px-3 pt-1 pb-3 text-[13px] leading-snug text-foreground/80 whitespace-pre-wrap font-sans">
-                                                    {bodyText || "Your message body..."}
-
-                                                    {templateType === 'catalog' && catalogProducts.filter(p => p.trim()).length > 0 && (
-                                                        <div className="mt-2 grid grid-cols-2 gap-1 opacity-80">
-                                                            {catalogProducts.slice(0, 4).filter(p => p.trim()).map((p, i) => (
-                                                                <div key={i} className="aspect-square bg-muted rounded flex items-center justify-center">
-                                                                    <ShoppingBag className="w-4 h-4 opacity-50 text-muted-foreground" />
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-
-                                                    {footerText && (
-                                                        <p className="mt-1.5 text-[11px] text-muted-foreground font-medium border-t border-border pt-1.5 opacity-70">
-                                                            {footerText}
-                                                        </p>
-                                                    )}
-                                                </div>
-
-                                                {/* Catalog Action */}
-                                                {templateType === 'catalog' && (
-                                                    <div className="border-t border-border flex flex-col divide-y divide-border bg-muted/30">
-                                                        <div className="p-2.5 text-center text-[13px] font-medium text-primary flex items-center justify-center gap-2 cursor-pointer hover:bg-muted/50 transition-colors">
-                                                            <ShoppingBag className="w-3.5 h-3.5" /> View Catalog
+                                                        <div className="text-center mt-2 text-[10px] text-gray-500 dark:text-gray-400 font-medium tracking-wide uppercase">
+                                                            {catalogProducts.filter(p => p.trim()).length} Items
                                                         </div>
                                                     </div>
                                                 )}
-                                            </div>
 
-                                            <div className="self-end mr-1 mt-0.5 flex items-center gap-1 opacity-40">
-                                                <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter">9:41 AM</span>
-                                                <CheckCircle className="w-2.5 h-2.5 text-muted-foreground" />
+                                                {/* Carousel: Cards Preview */}
+                                                {templateType === 'carousel' && (
+                                                    <div className="px-2 py-2 space-y-2">
+                                                        {carouselCards.slice(0, 3).map((card, idx) => (
+                                                            <div key={idx} className="bg-white dark:bg-[#1f2c34] border border-gray-100 dark:border-gray-700 rounded-lg overflow-hidden shadow-sm">
+                                                                {card.imagePreview && (
+                                                                    <div className="h-24 bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden">
+                                                                        <img src={card.imagePreview} alt="" className="w-full h-full object-cover" />
+                                                                    </div>
+                                                                )}
+                                                                <div className="p-2">
+                                                                    {card.title && <div className="text-sm font-semibold text-[#111b21] dark:text-[#e9edef]">{card.title}</div>}
+                                                                    {card.subtitle && <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{card.subtitle}</div>}
+                                                                    {card.button.text && (
+                                                                        <div className="mt-2 w-full py-1.5 text-center text-[#00A884] font-medium text-xs hover:bg-gray-50 dark:hover:bg-white/5 rounded transition-colors border-t border-gray-100 dark:border-gray-700">
+                                                                            {card.button.text}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                {/* Footer */}
+                                                {footerText && <div className="px-3 pb-2 text-[10px] text-gray-400 dark:text-gray-500">{footerText}</div>}
+
+                                                {/* Buttons Section */}
+                                                {(templateType === 'catalog' || (templateType === 'standard' && buttons.length > 0)) && (
+                                                    <div className="border-t border-gray-100 dark:border-[#2a3942]">
+                                                        {templateType === 'catalog' && (
+                                                            <button className="w-full py-2.5 text-[#008069] font-medium text-sm hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-[#2a3942] last:border-0">
+                                                                View Catalog
+                                                            </button>
+                                                        )}
+                                                        {buttons.map((btn, index) => (
+                                                            <button key={index} className="w-full py-2.5 text-[#008069] font-medium text-sm hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-[#2a3942] last:border-0 flex items-center justify-center gap-2">
+                                                                {btn.type === 'PHONE_NUMBER' && <span>📞</span>}
+                                                                {btn.type === 'URL' && <span>🔗</span>}
+                                                                {btn.text}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+
+                                                <div className="px-3 pb-1 text-right text-[10px] text-gray-400 dark:text-gray-500">
+                                                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
-                                <p className="text-[10px] text-muted-foreground mt-4 font-bold tracking-widest uppercase opacity-40">Live Preview</p>
                             </div>
-                        </div>
-                    </motion.div>
-                </div>
+
+                            {/* Footer */}
+                            <div className="bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-6 flex gap-3 justify-end flex-shrink-0">
+                                <button
+                                    onClick={onClose}
+                                    className="px-6 py-2.5 rounded-xl border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSubmit}
+                                    disabled={isSubmitting}
+                                    className="px-6 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-blue-400 text-white font-medium flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20"
+                                >
+                                    {isSubmitting ? (
+                                        <>
+                                            <LoadingSpinner />
+                                            Creating...
+                                        </>
+                                    ) : (
+                                        'Create Template'
+                                    )}
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+            {isGalleryOpen && (
+                <GalleryModal
+                    isOpen={isGalleryOpen}
+                    onClose={() => {
+                        setIsGalleryOpen(false);
+                        setCurrentCardIndex(null);
+                    }}
+                    onSelect={handleGallerySelect}
+                    multiSelect={false}
+                />
             )}
-        </AnimatePresence>
+        </>
+    );
+}
+
+/* ================= HELPER COMPONENTS ================= */
+
+function LoadingSpinner() {
+    return (
+        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+    );
+}
+
+function InputField({ label, ...props }: any) {
+    return (
+        <div className="space-y-1.5">
+            {label && <label className="text-xs font-medium text-foreground/80">{label}</label>}
+            <input
+                className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none text-foreground placeholder:text-muted-foreground"
+                {...props}
+            />
+        </div>
     );
 }
 

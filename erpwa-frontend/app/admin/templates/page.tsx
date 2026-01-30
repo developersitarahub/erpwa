@@ -48,11 +48,7 @@ import { processMedia } from "@/lib/mediaProcessor";
 
 const formatError = (error: any, defaultMsg: string) => {
   const errorData = error.response?.data;
-  let msg =
-    errorData?.details?.error_user_msg ||
-    errorData?.details?.message ||
-    errorData?.message ||
-    defaultMsg;
+  let msg = errorData?.details?.error_user_msg || errorData?.details?.message || errorData?.message || defaultMsg;
   const title = errorData?.details?.error_user_title;
 
   // Shorten specific common Meta messages
@@ -143,13 +139,7 @@ export default function TemplatesPage() {
   const [headerPreview, setHeaderPreview] = useState<string | null>(null);
   const [flows, setFlows] = useState<any[]>([]);
   const [buttons, setButtons] = useState<
-    {
-      type: string;
-      text: string;
-      value?: string;
-      flowId?: string;
-      flowAction?: string;
-    }[]
+    { type: string; text: string; value?: string; flowId?: string; flowAction?: string }[]
   >([]);
 
   // --- Catalog Template Modal State ---
@@ -158,7 +148,7 @@ export default function TemplatesPage() {
   // --- Send Modal State ---
   const [showSendModal, setShowSendModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(
-    null,
+    null
   );
   const [recipientInput, setRecipientInput] = useState("");
   const [recipientList, setRecipientList] = useState<string[]>([]);
@@ -318,13 +308,8 @@ export default function TemplatesPage() {
     const headerType = lang?.headerType;
 
     // If it's a special type, use the Catalog/Carousel modal
-    if (
-      template.templateType === "carousel" ||
-      template.templateType === "catalog" ||
-      headerType === "CAROUSEL" ||
-      headerType === "CATALOG" ||
-      template.metaTemplateName.includes("carousel")
-    ) {
+    if (template.templateType === 'carousel' || template.templateType === 'catalog' ||
+      headerType === 'CAROUSEL' || headerType === 'CATALOG' || template.metaTemplateName.includes('carousel')) {
       setSelectedTemplate(template);
       setShowCatalogModal(true);
       return;
@@ -347,8 +332,8 @@ export default function TemplatesPage() {
           text: b.text,
           value: b.value || "",
           flowId: b.flowId,
-          flowAction: b.flowAction,
-        })),
+          flowAction: b.flowAction
+        }))
       );
     } else {
       setButtons([]);
@@ -453,8 +438,7 @@ export default function TemplatesPage() {
         }
         if (btn.type === "FLOW") {
           if (btn.flowId) data.append(`buttons[${index}][flowId]`, btn.flowId);
-          if (btn.flowAction)
-            data.append(`buttons[${index}][flowAction]`, btn.flowAction);
+          if (btn.flowAction) data.append(`buttons[${index}][flowAction]`, btn.flowAction);
         }
       });
 
@@ -471,8 +455,8 @@ export default function TemplatesPage() {
                 displayName: formData.displayName,
                 category: formData.category,
               }
-              : t,
-          ),
+              : t
+          )
         );
         fetchTemplates();
       } else {
@@ -548,7 +532,7 @@ export default function TemplatesPage() {
 
   const handleSubmitToMeta = async (
     template: Template,
-    e: React.MouseEvent,
+    e: React.MouseEvent
   ) => {
     e.stopPropagation();
     if (submitting) return;
@@ -724,7 +708,7 @@ export default function TemplatesPage() {
     try {
       // Check if we need dynamic variables
       const hasDynamicVariables = Object.values(variableSources).some(
-        (v) => v === "company_name",
+        (v) => v === "company_name"
       );
       let payload: any = {
         templateId: selectedTemplate.id,
@@ -759,7 +743,7 @@ export default function TemplatesPage() {
 
       const res = await api.post(
         "/vendor/whatsapp/template/send-template",
-        payload,
+        payload
       );
 
       const results = res.data.results || [];
@@ -776,7 +760,7 @@ export default function TemplatesPage() {
         } else {
           toast.warning(
             `${results.length - failed.length} sent, ${failed.length
-            } failed. First error: ${firstError}`,
+            } failed. First error: ${firstError}`
           );
         }
       } else {
@@ -825,10 +809,7 @@ export default function TemplatesPage() {
   const formatTime = (dateStr: string) => {
     try {
       const date = new Date(dateStr);
-      return date.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } catch (e) {
       return "12:00";
     }
@@ -869,7 +850,10 @@ export default function TemplatesPage() {
               <Plus className="w-4 h-4 mr-2" /> Standard Template
             </Button>
             <Button
-              onClick={() => setShowCatalogModal(true)}
+              onClick={() => {
+                setSelectedTemplate(null);
+                setShowCatalogModal(true);
+              }}
               className="shadow-lg shadow-blue-500/20 bg-blue-600 hover:bg-blue-700 text-white transition-all hover:scale-105 active:scale-95"
             >
               <ShoppingBag className="w-4 h-4 mr-2" /> Catalog Template
@@ -1016,7 +1000,7 @@ export default function TemplatesPage() {
                       onClick={() => handleCardClick(t)}
                       className={cn(
                         "h-full flex flex-col cursor-pointer border-border/50 bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 overflow-hidden group-hover:border-primary/20",
-                        t.status === "approved" && "hover:border-green-500/30",
+                        t.status === "approved" && "hover:border-green-500/30"
                       )}
                     >
                       {/* Card Header area */}
@@ -1041,7 +1025,7 @@ export default function TemplatesPage() {
                             variant="outline"
                             className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground shrink-0 uppercase"
                           >
-                            {t.templateType || "STANDARD"}
+                            {t.templateType || 'STANDARD'}
                           </Badge>
                           <Badge
                             variant="outline"
@@ -1357,56 +1341,37 @@ export default function TemplatesPage() {
                     </label>
                     <div className="bg-white dark:bg-card p-4 rounded-lg shadow-sm border border-border/20 text-sm whitespace-pre-wrap leading-relaxed">
                       {/* Media Header Preview */}
-                      {selectedTemplate.languages[0]?.headerType !== "TEXT" &&
-                        (() => {
-                          const mediaItem = selectedTemplate.media?.find(
-                            (m) =>
-                              m.language ===
-                              selectedTemplate.languages[0]?.language,
-                          );
-                          if (mediaItem?.s3Url) {
-                            if (
-                              selectedTemplate.languages[0].headerType ===
-                              "IMAGE"
-                            ) {
-                              return (
-                                <div className="rounded-lg overflow-hidden bg-black/40 border border-border/10 mb-3 shadow-md flex items-center justify-center min-h-[140px]">
-                                  <img
-                                    src={mediaItem.s3Url}
-                                    alt="Header"
-                                    className="w-full h-full object-contain"
-                                  />
-                                </div>
-                              );
-                            } else if (
-                              selectedTemplate.languages[0].headerType ===
-                              "VIDEO"
-                            ) {
-                              return (
-                                <div className="rounded-lg overflow-hidden bg-black/40 border border-border/10 mb-3 relative shadow-md flex items-center justify-center min-h-[140px]">
-                                  <video
-                                    src={mediaItem.s3Url}
-                                    className="w-full h-full object-contain"
-                                  />
-                                  <div className="absolute inset-0 flex items-center justify-center bg-black/10">
-                                    <div className="w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-white">
-                                      <Video className="w-5 h-5" />
-                                    </div>
+                      {selectedTemplate.languages[0]?.headerType !== "TEXT" && (() => {
+                        const mediaItem = selectedTemplate.media?.find(m => m.language === selectedTemplate.languages[0]?.language);
+                        if (mediaItem?.s3Url) {
+                          if (selectedTemplate.languages[0].headerType === "IMAGE") {
+                            return (
+                              <div className="rounded-lg overflow-hidden bg-black/40 border border-border/10 mb-3 shadow-md flex items-center justify-center min-h-[140px]">
+                                <img src={mediaItem.s3Url} alt="Header" className="w-full h-full object-contain" />
+                              </div>
+                            );
+                          } else if (selectedTemplate.languages[0].headerType === "VIDEO") {
+                            return (
+                              <div className="rounded-lg overflow-hidden bg-black/40 border border-border/10 mb-3 relative shadow-md flex items-center justify-center min-h-[140px]">
+                                <video src={mediaItem.s3Url} className="w-full h-full object-contain" />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/10">
+                                  <div className="w-10 h-10 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center text-white">
+                                    <Video className="w-5 h-5" />
                                   </div>
                                 </div>
-                              );
-                            }
+                              </div>
+                            );
                           }
-                          return null;
-                        })()}
+                        }
+                        return null;
+                      })()}
 
                       {/* Header Text Preview */}
-                      {selectedTemplate.languages[0]?.headerType === "TEXT" &&
-                        selectedTemplate.languages[0]?.headerText && (
-                          <p className="font-bold text-sm mb-2 text-foreground">
-                            {selectedTemplate.languages[0].headerText}
-                          </p>
-                        )}
+                      {selectedTemplate.languages[0]?.headerType === "TEXT" && selectedTemplate.languages[0]?.headerText && (
+                        <p className="font-bold text-sm mb-2 text-foreground">
+                          {selectedTemplate.languages[0].headerText}
+                        </p>
+                      )}
 
                       <div className="text-foreground/90">
                         {(() => {
@@ -1475,7 +1440,7 @@ export default function TemplatesPage() {
                                     !variableSources[idx] ||
                                       variableSources[idx] === "custom"
                                       ? "bg-background shadow-sm text-foreground font-medium"
-                                      : "text-muted-foreground hover:text-foreground",
+                                      : "text-muted-foreground hover:text-foreground"
                                   )}
                                 >
                                   Custom
@@ -1491,7 +1456,7 @@ export default function TemplatesPage() {
                                     "px-2 py-0.5 text-[10px] rounded-sm transition-all",
                                     variableSources[idx] === "company_name"
                                       ? "bg-background shadow-sm text-foreground font-medium"
-                                      : "text-muted-foreground hover:text-foreground",
+                                      : "text-muted-foreground hover:text-foreground"
                                   )}
                                 >
                                   Company
@@ -1544,8 +1509,8 @@ export default function TemplatesPage() {
                         <SelectOption value="">All Categories</SelectOption>
                         {Array.from(
                           new Set(
-                            leads.map((l) => l.category_name).filter(Boolean),
-                          ),
+                            leads.map((l) => l.category_name).filter(Boolean)
+                          )
                         ).map((c) => (
                           <SelectOption key={c} value={c as string}>
                             {c}
@@ -1564,11 +1529,11 @@ export default function TemplatesPage() {
                               .filter(
                                 (l) =>
                                   !selectedCategory ||
-                                  l.category_name === selectedCategory,
+                                  l.category_name === selectedCategory
                               )
                               .map((l) => l.sub_category_name)
-                              .filter(Boolean),
-                          ),
+                              .filter(Boolean)
+                          )
                         ).map((sc) => (
                           <SelectOption key={sc} value={sc as string}>
                             {sc}
@@ -1603,8 +1568,7 @@ export default function TemplatesPage() {
                                   (!selectedCategory ||
                                     l.category_name === selectedCategory) &&
                                   (!selectedSubCategory ||
-                                    l.sub_category_name ===
-                                    selectedSubCategory),
+                                    l.sub_category_name === selectedSubCategory)
                               ).length > 0 &&
                               leads
                                 .filter(
@@ -1613,19 +1577,19 @@ export default function TemplatesPage() {
                                       l.company_name
                                         .toLowerCase()
                                         .includes(
-                                          recipientInput.toLowerCase(),
+                                          recipientInput.toLowerCase()
                                         ) ||
                                       l.mobile_number.includes(
-                                        recipientInput,
+                                        recipientInput
                                       )) &&
                                     (!selectedCategory ||
                                       l.category_name === selectedCategory) &&
                                     (!selectedSubCategory ||
                                       l.sub_category_name ===
-                                      selectedSubCategory),
+                                      selectedSubCategory)
                                 )
                                 .every((l) =>
-                                  recipientList.includes(l.mobile_number),
+                                  recipientList.includes(l.mobile_number)
                                 )
                             }
                             onChange={() => {
@@ -1639,25 +1603,24 @@ export default function TemplatesPage() {
                                   (!selectedCategory ||
                                     l.category_name === selectedCategory) &&
                                   (!selectedSubCategory ||
-                                    l.sub_category_name ===
-                                    selectedSubCategory),
+                                    l.sub_category_name === selectedSubCategory)
                               );
                               const allSelected = filtered.every((l) =>
-                                recipientList.includes(l.mobile_number),
+                                recipientList.includes(l.mobile_number)
                               );
 
                               if (allSelected) {
                                 const visiblePhones = filtered.map(
-                                  (l) => l.mobile_number,
+                                  (l) => l.mobile_number
                                 );
                                 setRecipientList(
                                   recipientList.filter(
-                                    (p) => !visiblePhones.includes(p),
-                                  ),
+                                    (p) => !visiblePhones.includes(p)
+                                  )
                                 );
                               } else {
                                 const visiblePhones = filtered.map(
-                                  (l) => l.mobile_number,
+                                  (l) => l.mobile_number
                                 );
                                 setRecipientList([
                                   ...new Set([
@@ -1681,8 +1644,7 @@ export default function TemplatesPage() {
                                   (!selectedCategory ||
                                     l.category_name === selectedCategory) &&
                                   (!selectedSubCategory ||
-                                    l.sub_category_name ===
-                                    selectedSubCategory),
+                                    l.sub_category_name === selectedSubCategory)
                               ).length
                             }
                             )
@@ -1703,7 +1665,7 @@ export default function TemplatesPage() {
                               (!selectedCategory ||
                                 l.category_name === selectedCategory) &&
                               (!selectedSubCategory ||
-                                l.sub_category_name === selectedSubCategory),
+                                l.sub_category_name === selectedSubCategory)
                           )
                           .map((lead) => (
                             <div
@@ -1715,8 +1677,8 @@ export default function TemplatesPage() {
                                 ) {
                                   setRecipientList(
                                     recipientList.filter(
-                                      (p) => p !== lead.mobile_number,
-                                    ),
+                                      (p) => p !== lead.mobile_number
+                                    )
                                   );
                                 } else {
                                   setRecipientList([
@@ -1728,7 +1690,7 @@ export default function TemplatesPage() {
                             >
                               <Checkbox
                                 checked={recipientList.includes(
-                                  lead.mobile_number,
+                                  lead.mobile_number
                                 )}
                                 onChange={() => { }} // handled by parent div click
                                 className="pointer-events-none"
@@ -1764,7 +1726,7 @@ export default function TemplatesPage() {
                               (!selectedCategory ||
                                 l.category_name === selectedCategory) &&
                               (!selectedSubCategory ||
-                                l.sub_category_name === selectedSubCategory),
+                                l.sub_category_name === selectedSubCategory)
                           ).length === 0 && (
                             <div className="p-8 text-center text-muted-foreground text-sm">
                               No matching leads found
@@ -1915,7 +1877,7 @@ export default function TemplatesPage() {
                                   "px-3 py-1.5 rounded-md border text-xs cursor-pointer transition-all",
                                   formData.language === lang
                                     ? "bg-primary/10 border-primary text-primary font-medium shadow-sm"
-                                    : "bg-background border-border hover:bg-muted",
+                                    : "bg-background border-border hover:bg-muted"
                                 )}
                               >
                                 {lang === "en_US"
@@ -1953,7 +1915,7 @@ export default function TemplatesPage() {
                                     "px-3 py-1.5 rounded-md border text-xs cursor-pointer transition-all flex items-center gap-2",
                                     formData.headerType === type
                                       ? "bg-primary/10 border-primary text-primary font-medium shadow-sm"
-                                      : "bg-background border-border hover:bg-muted scale-95 opacity-80 hover:opacity-100 hover:scale-100",
+                                      : "bg-background border-border hover:bg-muted scale-95 opacity-80 hover:opacity-100 hover:scale-100"
                                   )}
                                   onClick={() => {
                                     setFormData({
@@ -1974,7 +1936,7 @@ export default function TemplatesPage() {
                                   )}
                                   {type}
                                 </div>
-                              ),
+                              )
                             )}
                           </div>
 
@@ -2032,9 +1994,7 @@ export default function TemplatesPage() {
                                   <div className="flex items-center gap-2 bg-background p-1.5 rounded border border-border/50 text-xs shadow-sm">
                                     <Paperclip className="w-3 h-3" />
                                     <span className="font-medium truncate max-w-[150px]">
-                                      {headerFile
-                                        ? headerFile.name
-                                        : formData.headerType + " Attached"}
+                                      {headerFile ? headerFile.name : (formData.headerType + " Attached")}
                                     </span>
                                     <Button
                                       variant="ghost"
@@ -2230,13 +2190,7 @@ export default function TemplatesPage() {
                                   <select
                                     className="h-8 text-sm border rounded px-2 w-full bg-background"
                                     value={btn.flowId || ""}
-                                    onChange={(e) =>
-                                      updateButton(
-                                        idx,
-                                        "flowId",
-                                        e.target.value,
-                                      )
-                                    }
+                                    onChange={(e) => updateButton(idx, "flowId", e.target.value)}
                                   >
                                     <option value="">Select Flow</option>
                                     {flows.map((f) => (
@@ -2249,9 +2203,7 @@ export default function TemplatesPage() {
                                     className="h-8 text-sm"
                                     placeholder="Screen ID (e.g. WELCOME)"
                                     value={btn.value}
-                                    onChange={(e) =>
-                                      updateButton(idx, "value", e.target.value)
-                                    }
+                                    onChange={(e) => updateButton(idx, "value", e.target.value)}
                                   />
                                 </div>
                               )}
@@ -2278,7 +2230,7 @@ export default function TemplatesPage() {
                     "lg:flex lg:col-span-5 xl:col-span-4 lg:static lg:z-auto lg:p-4 lg:pt-4", // Desktop defaults
                     showMobilePreview
                       ? "flex fixed inset-0 z-50 pt-24 pb-8"
-                      : "hidden", // Mobile overlay
+                      : "hidden" // Mobile overlay
                   )}
                 >
                   {showMobilePreview && (

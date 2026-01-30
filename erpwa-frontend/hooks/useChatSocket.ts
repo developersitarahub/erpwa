@@ -18,7 +18,7 @@ interface UseChatSocketParams {
   setMessages: React.Dispatch<React.SetStateAction<Message[]>>;
   onUpdateConversationStatus?: (
     conversationId: string,
-    status: Message["status"]
+    status: Message["status"],
   ) => void;
   onCustomerMessage?: () => void;
 }

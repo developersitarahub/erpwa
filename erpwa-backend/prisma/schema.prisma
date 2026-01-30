@@ -509,6 +509,10 @@ model ActivityLog {
   responseCode    Int?     // HTTP response code
   processingMs    Int?     // Processing time in ms
 
+  // New filtering fields
+  whatsappBusinessId    String?
+  whatsappPhoneNumberId String?
+
   createdAt       DateTime @default(now())
   
   vendor          Vendor?  @relation(fields: [vendorId], references: [id], onDelete: Cascade)
@@ -519,6 +523,8 @@ model ActivityLog {
   @@index([status])
   @@index([createdAt])
   @@index([type])
+  @@index([whatsappBusinessId])
+  @@index([whatsappPhoneNumberId])
 }
 
 model Workflow {

@@ -320,8 +320,13 @@ router.post(
               template: {
                 name: template.displayName,
                 footer: language.footerText,
-                buttons: template.buttons || []
-              }
+                name: template.displayName,
+                footer: language.footerText,
+                buttons: template.buttons || [],
+                carouselCards: template.carouselCards || [] // ✅ Persist carousel cards
+              },
+              templateId: template.id, // ✅ CRITICAL: Save templateId for enrichment
+              templateType: template.templateType // ✅ Save type
             },
           },
         });
@@ -356,8 +361,12 @@ router.post(
             // Template specific metadata
             template: {
               footer: language.footerText,
-              buttons: template.buttons || []
-            }
+              footer: language.footerText,
+              buttons: template.buttons || [],
+              carouselCards: template.carouselCards || [] // ✅ Socket: Send cards
+            },
+            templateType: template.templateType || "standard", // ✅ Socket: Send type
+            carouselCards: template.carouselCards || [] // ✅ Socket: Send cards (top level for compatibility)
           });
 
           io.to(`vendor:${vendor.id}`).emit("inbox:update", {

@@ -134,9 +134,12 @@ router.get(
       const userId = req.user.id;
 
       if (assignedId !== userId) {
-        console.warn(`⛔ ACCESS DENIED: Sales user ${userId} tried to access lead assigned to ${assignedId}`);
+        console.warn(
+          `⛔ ACCESS DENIED: Sales user ${userId} tried to access lead assigned to ${assignedId}`,
+        );
         return res.status(403).json({
-          message: "You do not have permission to view this conversation (Lead not assigned to you).",
+          message:
+            "You do not have permission to view this conversation (Lead not assigned to you).",
         });
       }
     }
@@ -164,7 +167,8 @@ router.get(
         include: {
           languages: true,
           buttons: true,
-          media: true, // ✅ Include media for headers
+          media: true,
+          carouselCards: { orderBy: { position: 'asc' } }, // ✅ Include carousel cards
         },
       });
       templates.forEach((t) => templatesMap.set(t.id, t));
@@ -229,7 +233,10 @@ router.get(
           type: b.type,
           text: b.text,
           value: b.value,
+          value: b.value,
         })),
+        templateType: tmpl.templateType || 'standard', // ✅ Add Template Type
+        carouselCards: tmpl.carouselCards, // ✅ Add Carousel Cards
       };
 
       return {
@@ -242,13 +249,43 @@ router.get(
       };
     });
 
+    // Also expose outboundPayload for non-template messages if present
+    const finalMessages = enrichedMessages.map((m) => {
+      if (m.messageType !== "template" && m.outboundPayload) {
+        return {
+          ...m,
+          outboundPayload: m.outboundPayload,
+        };
+      }
+      return m;
+    });
+
+    // DEBUG: Check for interactive messages
+    const interactiveMsgs = finalMessages.filter(
+      (m) => m.messageType === "interactive",
+    );
+    if (interactiveMsgs.length > 0) {
+      console.log(
+        "🔍 [InboxAPI] Found interactive messages:",
+        interactiveMsgs.length,
+      );
+      console.log(
+        "🔍 [InboxAPI] Sample payload:",
+        JSON.stringify(interactiveMsgs[0].outboundPayload, null, 2),
+      );
+    } else {
+      console.log(
+        "🔍 [InboxAPI] No interactive messages found in conversation",
+      );
+    }
+
     res.json({
       conversationId: conversation.id,
       lead: conversation.lead,
       sessionStarted,
       sessionActive,
       sessionExpiresAt: conversation.sessionExpiresAt,
-      messages: enrichedMessages,
+      messages: finalMessages,
     });
   }),
 );

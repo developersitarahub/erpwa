@@ -165,11 +165,11 @@ export async function processWhatsappQueue() {
         // Increment failed count on campaign if final failure
         ...(retries >= MAX_RETRIES && message.campaignId
           ? [
-              prisma.campaign.update({
-                where: { id: message.campaignId },
-                data: { failedMessages: { increment: 1 } },
-              }),
-            ]
+            prisma.campaign.update({
+              where: { id: message.campaignId },
+              data: { failedMessages: { increment: 1 } },
+            }),
+          ]
           : []),
       ]);
 
@@ -215,6 +215,8 @@ async function processTemplateMessage(message, accessToken, to, vendor) {
       languages: { where: { language: language } },
       buttons: true,
       media: { where: { language: language } },
+      catalogProducts: { orderBy: { position: "asc" } },
+      carouselCards: { orderBy: { position: "asc" } },
     },
   });
 
@@ -225,23 +227,100 @@ async function processTemplateMessage(message, accessToken, to, vendor) {
   // Construct WhatsApp Components
   const components = [];
 
-  // A. Header Media
-  if (templateLang.headerType && templateLang.headerType !== "TEXT") {
-    const media = template.media[0];
-    if (media?.s3Url) {
-      components.push({
-        type: "header",
-        parameters: [
-          {
-            type: media.mediaType.toLowerCase(), // IMAGE, VIDEO, DOCUMENT
-            [media.mediaType.toLowerCase()]: {
-              link: media.s3Url,
-            },
+  // 1. CATALOG TEMPLATE (MPM)
+  // Check explicit type OR presence of products
+  const isCatalog = template.templateType === "catalog" || template.catalogProducts.length > 0;
+
+  if (isCatalog && template.catalogProducts.length > 0) {
+    // For Catalog templates, we must specify the thumbnail product
+    components.push({
+      type: "button",
+      sub_type: "CATALOG",
+      index: 0,
+      parameters: [
+        {
+          type: "action",
+          action: {
+            thumbnail_product_retailer_id: template.catalogProducts[0].productId,
           },
-        ],
-      });
+        },
+      ],
+    });
+  }
+
+  // 2. CAROUSEL TEMPLATE (Marketing)
+  // Check explicit type OR presence of cards
+  const isCarousel = template.templateType === "carousel" || template.carouselCards.length > 0;
+
+  if (isCarousel && template.carouselCards.length > 0) {
+    // Construct the Carousel Component
+    // We assume the card headers are dynamic variables (Handles/URLs) in the template definition
+    const cards = template.carouselCards.map((card, index) => {
+      // Each card must have components if it has variables
+      // We assume strict matching requires the Header Image for each card
+      const cardComponents = [];
+
+      // Add Header Image (if exists)
+      if (card.s3Url) {
+        cardComponents.push({
+          type: "header",
+          parameters: [
+            {
+              type: "image",
+              image: {
+                link: card.s3Url,
+              },
+            },
+          ],
+        });
+      }
+
+      return {
+        card_index: index,
+        components: cardComponents,
+      };
+    });
+
+    components.push({
+      type: "carousel",
+      cards: cards,
+    });
+  }
+
+  // 3. STANDARD HEADER (Image/Video/Doc)
+  // CRITICAL: Skip if Carousel or Catalog to avoid 132012 format error
+  // Carousels do not accept standard header components in the same way.
+  if (!isCarousel && !isCatalog) {
+    if (
+      templateLang.headerType &&
+      templateLang.headerType !== "TEXT"
+    ) {
+      const media = template.media[0];
+      if (media?.s3Url) {
+        components.push({
+          type: "header",
+          parameters: [
+            {
+              type: media.mediaType.toLowerCase(), // IMAGE, VIDEO, DOCUMENT
+              [media.mediaType.toLowerCase()]: {
+                link: media.s3Url,
+              },
+            },
+          ],
+        });
+      }
     }
   }
+
+  // Debug Log
+  log("info", "Constructed Template Components", {
+    messageId: message.id,
+    templateName: template.metaTemplateName,
+    templateType: template.templateType,
+    isCarousel,
+    isCatalog,
+    components,
+  });
 
   // B. Body
   if (outboundPayload.bodyVariables && outboundPayload.bodyVariables.length > 0) {

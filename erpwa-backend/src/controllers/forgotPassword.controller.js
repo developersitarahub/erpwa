@@ -6,6 +6,7 @@ import { getIO } from "../socket.js";
 import { generateOtp, hashOtp } from "../utils/otp.js";
 import { sendMail } from "../utils/mailer.js";
 import { passwordResetOtpTemplate } from "../emails/passwordResetOtp.template.js";
+import { logActivity } from "../services/activityLog.service.js";
 
 /**
  * FORGOT PASSWORD
@@ -237,8 +238,24 @@ export async function resetForgotPassword(req, res) {
         });
         console.log("📡 Emitted user:activated event for user", user.id);
       }
+
+      // 📝 Log user activation
+      const userDetails = await prisma.user.findUnique({ where: { id: payload.sub } });
+      await logActivity({
+        vendorId: user.vendorId,
+        status: "success",
+        event: "User Activated",
+        type: "User",
+        payload: {
+          userId: user.id,
+          userName: userDetails?.name,
+          userEmail: userDetails?.email,
+          activatedAt: updateData.activatedAt
+        }
+      });
+
     } catch (error) {
-      console.warn("⚠️ Failed to emit user:activated event:", error.message);
+      console.warn("⚠️ Failed to emit user:activated event or log activity:", error.message);
     }
   }
 

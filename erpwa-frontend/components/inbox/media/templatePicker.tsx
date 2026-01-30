@@ -9,8 +9,12 @@ import {
     Globe,
     MessageSquareIcon,
     Image as ImageIcon,
+    ShoppingBag,
+    Layers,
+    Loader2,
 } from "lucide-react";
 
+import { toast } from "react-toastify";
 import type { Template } from "@/lib/types";
 
 interface TemplatePickerProps {
@@ -40,6 +44,26 @@ export default function TemplatePicker({
     isSendingTemplate,
     handleSendTemplate,
 }: TemplatePickerProps) {
+
+    const handleSendClick = async () => {
+        // Validation: Check if all variables are filled
+        // This is especially critical for Catalog templates where params might be required
+        if (selectedTemplate) {
+            const emptyVars = templateVariables.some(v => !v || v.trim() === "");
+            if (emptyVars) {
+                toast.error("Please fill all required variable fields", {
+                    position: "top-center",
+                    autoClose: 3000
+                });
+
+                // Highlight empty fields logic could go here (e.g. by setting a 'touched' state), 
+                // but toast is a good first step.
+                return;
+            }
+        }
+
+        await handleSendTemplate();
+    };
     return (
         <div className="flex flex-col h-[500px]">
             {!selectedTemplate ? (
@@ -80,9 +104,26 @@ export default function TemplatePicker({
                                 >
                                     <div className="flex justify-between items-start mb-1">
                                         <p className="font-semibold text-sm">{t.displayName}</p>
-                                        <span className="text-[10px] px-2 py-0.5 rounded-full uppercase bg-muted">
-                                            {t.category}
-                                        </span>
+                                        <div className="flex gap-1 items-center">
+                                            <span className="text-[10px] px-2 py-0.5 rounded-full uppercase bg-muted">
+                                                {t.category}
+                                            </span>
+                                            {(t.templateType || "").toLowerCase() === "catalog" && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-purple-100 text-purple-600 dark:bg-purple-900/30 flex items-center gap-1">
+                                                    <ShoppingBag className="w-3 h-3" /> Catalog
+                                                </span>
+                                            )}
+                                            {(t.templateType || "").toLowerCase() === "carousel" && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-pink-100 text-pink-600 dark:bg-pink-900/30 flex items-center gap-1">
+                                                    <Layers className="w-3 h-3" /> Carousel
+                                                </span>
+                                            )}
+                                            {(!t.templateType || (t.templateType || "").toLowerCase() === "standard") && (
+                                                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-slate-200 flex items-center gap-1">
+                                                    Standard
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     <p className="text-xs text-muted-foreground line-clamp-2">
@@ -117,9 +158,26 @@ export default function TemplatePicker({
                             <p className="font-semibold text-sm">
                                 {selectedTemplate.displayName}
                             </p>
-                            <p className="text-[10px] uppercase text-muted-foreground">
-                                {selectedTemplate.category}
-                            </p>
+                            <div className="flex gap-2 items-center mt-1">
+                                <p className="text-[10px] uppercase text-muted-foreground font-bold">
+                                    {selectedTemplate.category}
+                                </p>
+                                {(selectedTemplate.templateType || "").toLowerCase() === "catalog" && (
+                                    <span className="text-[10px] text-purple-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                                        <ShoppingBag className="w-3 h-3" /> Catalog
+                                    </span>
+                                )}
+                                {(selectedTemplate.templateType || "").toLowerCase() === "carousel" && (
+                                    <span className="text-[10px] text-pink-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                                        <Layers className="w-3 h-3" /> Carousel
+                                    </span>
+                                )}
+                                {(!selectedTemplate.templateType || (selectedTemplate.templateType || "").toLowerCase() === "standard") && (
+                                    <span className="text-[10px] text-slate-900 dark:text-slate-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                                        Standard
+                                    </span>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -229,6 +287,36 @@ export default function TemplatePicker({
                             </div>
                         </div>
 
+                        {/* Carousel Cards Preview */}
+                        {(selectedTemplate.templateType === "carousel" || (selectedTemplate.carouselCards && selectedTemplate.carouselCards.length > 0)) && (
+                            <div className="flex overflow-x-auto gap-2 py-2 mt-1 snap-x scrollbar-thin scrollbar-thumb-gray-600/50">
+                                {(selectedTemplate.carouselCards || []).map((card, idx) => (
+                                    <div key={idx} className="flex-shrink-0 w-[200px] bg-wa-inbound rounded-2xl overflow-hidden shadow-sm border border-border/50 snap-center flex flex-col">
+                                        {/* Content Area */}
+                                        <div className="p-3">
+                                            {card.s3Url && (
+                                                <div className="h-28 w-full relative mb-3 rounded-lg overflow-hidden bg-muted">
+                                                    {card.mimeType?.startsWith('video') ? (
+                                                        <video src={card.s3Url} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <img src={card.s3Url} alt="" className="w-full h-full object-cover" />
+                                                    )}
+                                                </div>
+                                            )}
+                                            <p className="font-bold text-sm text-foreground line-clamp-1 mb-1">{idx + 1}. {card.title || "No Title"}</p>
+                                            <p className="text-xs text-muted-foreground line-clamp-2">{card.subtitle || "No subtitle available"}</p>
+                                        </div>
+
+                                        {/* Button */}
+                                        {(card.buttonText || card.buttonValue) && (
+                                            <div className="border-t border-border/30 py-2.5 text-center hover:bg-black/5 dark:hover:bg-white/5 transition-colors cursor-pointer">
+                                                <span className="text-sm text-[#0084ff] dark:text-[#53bdeb] font-semibold">{card.buttonText || "View Details"}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         {/* Variables */}
                         {templateVariables.length > 0 && (
                             <div className="space-y-4">
@@ -264,12 +352,15 @@ export default function TemplatePicker({
                         </button>
 
                         <button
-                            onClick={handleSendTemplate}
+                            onClick={handleSendClick}
                             disabled={isSendingTemplate}
-                            className="flex-[2] py-3 rounded-xl bg-primary text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                            className="flex-[2] py-3 rounded-xl bg-primary text-white font-bold flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
                         >
                             {isSendingTemplate ? (
-                                "Sending..."
+                                <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    Sending...
+                                </>
                             ) : (
                                 <>
                                     <Send className="w-4 h-4" />

@@ -9,6 +9,7 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import { uploadTemplateMediaToS3 } from "../services/templateMedia.service.js";
 import { upload } from "../middleware/upload.middleware.js";
 import { uploadTemplateMediaToMeta } from "../utils/uploadTemplateMediaToMeta.js";
+import { logActivity } from "../services/activityLog.service.js";
 
 
 
@@ -371,6 +372,10 @@ router.post(
   requireRoles(["vendor_owner", "vendor_admin", "sales"]),
   upload.any(), // Use any() to support dynamic indexed fields for carousel images
   asyncHandler(async (req, res) => {
+    console.log("🚀 [TEMPLATE CREATE] Request received");
+    console.log("📦 Request Body Keys:", Object.keys(req.body));
+    console.log("📂 Request Files count:", req.files ? req.files.length : 0);
+
     const {
       metaTemplateName,
       displayName,
@@ -380,40 +385,72 @@ router.post(
       footerText,
       buttons = [],
       templateType = 'standard', // 'standard', 'catalog', 'carousel'
-      catalogProducts = [], // Array of product IDs for catalog templates
     } = req.body;
 
-    if (!metaTemplateName || !category || !language || !body) {
-      return res.status(400).json({ message: "Missing required fields" });
+    console.log("📝 Parsing buttons & catalog products...");
+
+    // Parse buttons if it's a string (FormData)
+    let parsedButtons = [];
+    try {
+      if (typeof req.body.buttons === 'string') {
+        parsedButtons = JSON.parse(req.body.buttons);
+      } else if (Array.isArray(req.body.buttons)) {
+        parsedButtons = req.body.buttons;
+      }
+    } catch (e) {
+      console.error("❌ Error parsing buttons:", e);
+      parsedButtons = [];
     }
 
-    // Validate catalog template
-    if (templateType === 'catalog') {
-      if (!Array.isArray(catalogProducts) || catalogProducts.length === 0) {
-        return res.status(400).json({ message: "At least one product is required for catalog templates" });
+    // Parse catalogProducts if it's a string
+    let parsedCatalogProducts = [];
+    try {
+      if (typeof req.body.catalogProducts === 'string') {
+        parsedCatalogProducts = JSON.parse(req.body.catalogProducts);
+      } else if (Array.isArray(req.body.catalogProducts)) {
+        parsedCatalogProducts = req.body.catalogProducts;
       }
-      if (catalogProducts.length > 30) {
-        return res.status(400).json({ message: "Maximum 30 products allowed per catalog template" });
-      }
+    } catch (e) {
+      console.error("❌ Error parsing catalogProducts:", e);
+      parsedCatalogProducts = [];
     }
 
-    // Parse Carousel Cards
+    // Parse Carousel Cards (if any)
     let carouselCardsData = [];
     if (templateType === 'carousel') {
       try {
+        console.log("🎠 Parsing carousel cards...");
         carouselCardsData = JSON.parse(req.body.carouselCards || '[]');
         if (carouselCardsData.length === 0) {
           return res.status(400).json({ message: "At least one card is required for carousel templates" });
         }
       } catch (e) {
+        console.error("❌ Error parsing carousel cards:", e);
         return res.status(400).json({ message: "Invalid carousel cards data" });
       }
     }
+
+    if (!metaTemplateName || !category || !language || !body) {
+      console.error("❌ Missing required fields:", { metaTemplateName, category, language, body: !!body });
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    // Validate catalog template
+    if (templateType === 'catalog') {
+      if (!Array.isArray(parsedCatalogProducts) || parsedCatalogProducts.length === 0) {
+        return res.status(400).json({ message: "At least one product is required for catalog templates" });
+      }
+      if (parsedCatalogProducts.length > 30) {
+        return res.status(400).json({ message: "Maximum 30 products allowed per catalog template" });
+      }
+    }
+
 
     const headerType = req.body["header.type"] || "TEXT";
     // Find header file by fieldname
     const headerFile = req.files?.find(f => f.fieldname === "header.file");
 
+    console.log(`HEADER TYPE: ${headerType}, FILE PRESENT: ${!!headerFile}`);
 
     if (!["TEXT", "IMAGE", "VIDEO", "DOCUMENT"].includes(headerType)) {
       return res.status(400).json({ message: "Invalid header type" });
@@ -429,10 +466,13 @@ router.post(
     });
 
     if (existingTemplate) {
+      console.warn("⚠️ Template with this name already exists");
       return res
         .status(409)
         .json({ message: "Template with this name already exists for this vendor." });
     }
+
+    console.log("💾 Creating template in DB...");
 
     /** TEMPLATE */
     const template = await prisma.template.create({
@@ -529,8 +569,8 @@ router.post(
 
 
     /** BUTTONS */
-    for (let i = 0; i < buttons.length; i++) {
-      const btn = buttons[i];
+    for (let i = 0; i < parsedButtons.length; i++) {
+      const btn = parsedButtons[i];
 
       await prisma.templateButton.create({
         data: {
@@ -550,17 +590,29 @@ router.post(
     }
 
     /** CATALOG PRODUCTS (for catalog templates) */
-    if (templateType === 'catalog' && Array.isArray(catalogProducts)) {
-      for (let i = 0; i < catalogProducts.length; i++) {
+    if (templateType === 'catalog' && Array.isArray(parsedCatalogProducts)) {
+      for (let i = 0; i < parsedCatalogProducts.length; i++) {
         await prisma.templateCatalogProduct.create({
           data: {
             templateId: template.id,
-            productId: catalogProducts[i],
+            productId: parsedCatalogProducts[i],
             position: i,
           },
         });
       }
     }
+
+    await logActivity({
+      vendorId: req.user.vendorId,
+      status: "created",
+      event: "Template Created",
+      category: category,
+      type: "Template",
+      messageId: null,
+      whatsappBusinessId: null, // Will be fetched via vendorId inside service
+      whatsappPhoneNumberId: null,
+      payload: { templateId: template.id, name: metaTemplateName, type: templateType },
+    });
 
     res.json({ template, language: templateLanguage });
   })
@@ -615,9 +667,22 @@ router.put(
       language: langCode,
       body,
       footerText,
-      buttons = [],
+      buttons,
       templateType = 'standard',
     } = req.body;
+
+    // Parse buttons if it's a string (FormData)
+    let parsedButtons = [];
+    try {
+      if (typeof buttons === 'string') {
+        parsedButtons = JSON.parse(buttons);
+      } else if (Array.isArray(buttons)) {
+        parsedButtons = buttons;
+      }
+    } catch (e) {
+      console.error("Error parsing buttons update:", e);
+      parsedButtons = [];
+    }
 
     const template = await prisma.template.findUnique({
       where: { id },
@@ -760,9 +825,10 @@ router.put(
     await prisma.templateButton.deleteMany({ where: { templateId: id } });
 
     // Re-create buttons
-    if (buttons && Array.isArray(buttons)) {
-      for (let i = 0; i < buttons.length; i++) {
-        const btn = buttons[i];
+    // Re-create buttons
+    if (parsedButtons && Array.isArray(parsedButtons)) {
+      for (let i = 0; i < parsedButtons.length; i++) {
+        const btn = parsedButtons[i];
         await prisma.templateButton.create({
           data: {
             templateId: id,
@@ -779,6 +845,16 @@ router.put(
     } else if (req.body.buttons) {
       // Handle case where buttons come as separate fields if necessary
     }
+
+    await logActivity({
+      vendorId: req.user.vendorId,
+      status: "success",
+      event: "Template Updated",
+      category: category,
+      type: "Template",
+      messageId: null,
+      payload: { templateId: id, name: displayName, type: templateType },
+    });
 
     res.json({ success: true, message: "Template updated" });
   })
@@ -1065,6 +1141,18 @@ router.post(
     });
 
     console.log("✅ Template submitted successfully. Meta ID:", metaData.id);
+
+    await logActivity({
+      vendorId: template.vendorId,
+      status: "success",
+      event: "Template Submitted",
+      category: template.category,
+      type: "Template",
+      messageId: null,
+      whatsappBusinessId: template.vendor.whatsappBusinessId,
+      whatsappPhoneNumberId: template.vendor.whatsappPhoneNumberId,
+      payload: { templateId: template.id, metaId: metaData.id },
+    });
 
     res.json({
       success: true,

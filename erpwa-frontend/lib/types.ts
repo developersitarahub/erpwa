@@ -74,6 +74,7 @@ export interface Campaign {
   id: string;
   name: string;
   type: "image" | "template";
+  templateType?: "standard" | "catalog" | "carousel";
   status: "draft" | "active" | "completed" | "paused";
   recipientCount: number;
   createdAt: string;
@@ -123,6 +124,7 @@ export interface Message {
   status?: "sent" | "delivered" | "read" | "failed" | "received";
 
   template?: {
+    templateType?: "standard" | "catalog" | "carousel";
     header?: {
       type: string;
       text?: string;
@@ -133,9 +135,33 @@ export interface Message {
     };
     footer?: string;
     buttons?: Array<{ text: string; type: string; value?: string }>;
+    carouselCards?: {
+      id: string; // or number? usually strings in frontend types here
+      title?: string;
+      subtitle?: string;
+      mediaUrl?: string; // s3Url
+      s3Url?: string; // Fallback for backend spread
+      mimeType?: string;
+      buttonText?: string;
+      buttonValue?: string;
+      buttonType?: string;
+    }[];
   };
   optimistic?: boolean;
   clientTempId?: string;
+  carouselCards?: {
+    id: string;
+    title?: string;
+    subtitle?: string; // or body
+    mediaUrl?: string; // s3Url
+    s3Url?: string;
+    mimeType?: string;
+    buttonText?: string;
+    buttonValue?: string;
+    buttonType?: string;
+  }[];
+  outboundPayload?: any;
+  messageType?: string;
 }
 
 export interface Template {
@@ -143,6 +169,7 @@ export interface Template {
   metaTemplateName: string;
   displayName: string;
   category: string;
+  templateType: "standard" | "catalog" | "carousel";
   status: string;
   languages: {
     language: string;
@@ -161,5 +188,17 @@ export interface Template {
     type: string;
     text: string;
     value?: string;
+  }[];
+  carouselCards?: {
+    id: string;
+    title?: string;
+    subtitle?: string;
+    s3Url?: string;
+    mimeType?: string;
+    buttonText?: string;
+    buttonValue?: string;
+    buttonType?: string;
+    position: number;
+    mediaHandle?: string;
   }[];
 }

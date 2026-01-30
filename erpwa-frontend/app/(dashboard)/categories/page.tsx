@@ -101,6 +101,36 @@ export default function CategoriesPage() {
   }>({ isOpen: false, type: 'category' });
   const [isContactsExpanded, setIsContactsExpanded] = useState(false)
 
+  // Combobox State
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
+  const [filteredCategories, setFilteredCategories] = useState<Category[]>([])
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.category-combobox-container')) {
+        setIsCategoryDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [])
+
+  // Filter categories when input changes
+  useEffect(() => {
+    if (categoryName) {
+      const filtered = categories.filter(c =>
+        c.name.toLowerCase().includes(categoryName.toLowerCase())
+      )
+      setFilteredCategories(filtered)
+    } else {
+      setFilteredCategories(categories)
+    }
+  }, [categoryName, categories])
+
 
 
   useEffect(() => {
@@ -397,6 +427,8 @@ export default function CategoriesPage() {
 
 
 
+
+
   const selectedCategoryData = categories.find((c) => c.id === selectedCategory)
   const subcategories = selectedCategoryData?.subcategories || []
 
@@ -459,7 +491,7 @@ export default function CategoriesPage() {
           <CardContent>
             <form onSubmit={handleCreateCategory} className="mb-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
+                <div className="relative category-combobox-container">
                   <label htmlFor="category_name" className="text-sm font-medium text-foreground block mb-2">
                     Category Name
                   </label>
@@ -468,9 +500,38 @@ export default function CategoriesPage() {
                     className="w-full px-4 py-2 bg-secondary border border-border rounded-lg text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary text-sm"
                     id="category_name"
                     value={categoryName}
-                    onChange={(e) => setCategoryName(e.target.value)}
+                    onChange={(e) => {
+                      setCategoryName(e.target.value)
+                      setIsCategoryDropdownOpen(true)
+                    }}
+                    onFocus={() => setIsCategoryDropdownOpen(true)}
                     required
+                    autoComplete="off"
+                    placeholder="Create a Category"
                   />
+                  {/* Combobox Dropdown */}
+                  {isCategoryDropdownOpen && (
+                    <div className="absolute z-10 w-full mt-1 bg-popover border border-border rounded-md shadow-md max-h-60 overflow-auto">
+                      {filteredCategories.length > 0 ? (
+                        filteredCategories.map((cat) => (
+                          <div
+                            key={cat.id}
+                            className="px-4 py-2 text-sm cursor-pointer hover:bg-muted text-popover-foreground transition-colors"
+                            onClick={() => {
+                              setCategoryName(cat.name)
+                              setIsCategoryDropdownOpen(false)
+                            }}
+                          >
+                            {cat.name}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-4 py-2 text-sm text-muted-foreground">
+                          Type to create new category
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label
@@ -485,6 +546,7 @@ export default function CategoriesPage() {
                     id="subcategory_name"
                     value={subcategoryName}
                     onChange={(e) => setSubcategoryName(e.target.value)}
+                    placeholder="Create a Sub-category"
                   />
                 </div>
                 <div className="flex items-end">

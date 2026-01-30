@@ -14,6 +14,8 @@ import {
     Loader2,
     MessageSquareIcon,
     Globe,
+    ShoppingBag,
+    Layers,
 } from "lucide-react";
 import Image from "next/image";
 import { toast } from "react-toastify";
@@ -595,16 +597,33 @@ export default function MediaModal(props: MediaModalProps) {
                                                                 <p className="font-semibold text-sm group-hover:text-primary transition-colors">
                                                                     {t.displayName}
                                                                 </p>
-                                                                <span
-                                                                    className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wider ${t.category === "MARKETING"
-                                                                        ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30"
-                                                                        : t.category === "UTILITY"
-                                                                            ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30"
-                                                                            : "bg-muted text-muted-foreground"
-                                                                        }`}
-                                                                >
-                                                                    {t.category}
-                                                                </span>
+                                                                <div className="flex flex-wrap justify-end gap-1 max-w-[50%]">
+                                                                    <span
+                                                                        className={`text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wider ${t.category === "MARKETING"
+                                                                            ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30"
+                                                                            : t.category === "UTILITY"
+                                                                                ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30"
+                                                                                : "bg-muted text-muted-foreground"
+                                                                            }`}
+                                                                    >
+                                                                        {t.category}
+                                                                    </span>
+                                                                    {(t.templateType || "").toLowerCase() === "catalog" && (
+                                                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wider bg-purple-100 text-purple-600 dark:bg-purple-900/30 flex items-center gap-1">
+                                                                            <ShoppingBag className="w-3 h-3" /> Catalog
+                                                                        </span>
+                                                                    )}
+                                                                    {(t.templateType || "").toLowerCase() === "carousel" && (
+                                                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium uppercase tracking-wider bg-pink-100 text-pink-600 dark:bg-pink-900/30 flex items-center gap-1">
+                                                                            <Layers className="w-3 h-3" /> Carousel
+                                                                        </span>
+                                                                    )}
+                                                                    {(!t.templateType || (t.templateType || "").toLowerCase() === "standard") && (
+                                                                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-200 text-slate-700 dark:bg-slate-800 flex items-center gap-1">
+                                                                            Standard
+                                                                        </span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             <p className="text-xs text-muted-foreground line-clamp-2 mt-1 leading-relaxed">
                                                                 {t.languages[0]?.body}
@@ -642,9 +661,26 @@ export default function MediaModal(props: MediaModalProps) {
                                                     <p className="font-semibold text-sm">
                                                         {selectedTemplate.displayName}
                                                     </p>
-                                                    <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
-                                                        {selectedTemplate.category}
-                                                    </p>
+                                                    <div className="flex gap-2 items-center mt-1">
+                                                        <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
+                                                            {selectedTemplate.category}
+                                                        </p>
+                                                        {(selectedTemplate.templateType || "").toLowerCase() === "catalog" && (
+                                                            <span className="text-[10px] text-purple-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                                                                <ShoppingBag className="w-3 h-3" /> Catalog
+                                                            </span>
+                                                        )}
+                                                        {(selectedTemplate.templateType || "").toLowerCase() === "carousel" && (
+                                                            <span className="text-[10px] text-pink-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                                                                <Layers className="w-3 h-3" /> Carousel
+                                                            </span>
+                                                        )}
+                                                        {(!selectedTemplate.templateType || (selectedTemplate.templateType || "").toLowerCase() === "standard") && (
+                                                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                                                                Standard
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -762,6 +798,34 @@ export default function MediaModal(props: MediaModalProps) {
                                                                             return body;
                                                                         })()}
                                                                     </div>
+
+                                                                    {/* Carousel Cards Preview */}
+                                                                    {(selectedTemplate.templateType === "carousel" || (selectedTemplate.carouselCards && selectedTemplate.carouselCards.length > 0)) && (
+                                                                        <div className="flex overflow-x-auto gap-2 px-2 pb-2 mt-1 snap-x scrollbar-thin scrollbar-thumb-gray-600/50">
+                                                                            {(selectedTemplate.carouselCards || []).map((card, idx) => (
+                                                                                <div key={idx} className="flex-shrink-0 w-40 bg-[#2a3942] rounded-lg overflow-hidden border border-white/10 flex flex-col snap-center">
+                                                                                    {card.s3Url && (
+                                                                                        <div className="h-24 w-full relative">
+                                                                                            {card.mimeType?.startsWith('video') ? (
+                                                                                                <video src={card.s3Url} className="w-full h-full object-cover" />
+                                                                                            ) : (
+                                                                                                <img src={card.s3Url} alt="" className="w-full h-full object-cover" />
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <div className="p-2 flex-1">
+                                                                                        <p className="font-bold text-xs text-[#e9edef] line-clamp-1 mb-0.5">{card.title}</p>
+                                                                                        <p className="text-[10px] text-[#8696a0] line-clamp-2">{card.subtitle}</p>
+                                                                                    </div>
+                                                                                    {(card.buttonText || card.buttonValue) && (
+                                                                                        <div className="border-t border-white/10 py-1.5 text-center">
+                                                                                            <span className="text-xs text-[#53bdeb] font-medium">{card.buttonText || "View"}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
 
                                                                     {/* Footer */}
                                                                     {selectedTemplate.languages[0]

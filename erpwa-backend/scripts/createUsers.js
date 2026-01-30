@@ -16,30 +16,30 @@ async function main() {
 
   // 2️⃣ Create users linked to vendor
   const users = [
-    // {
-    //   email: "sohamsawalakhe@gmail.com",
-    //   name: "Soham Sawalakhe",
-    //   role: "vendor_admin",
-    // },
-    // {
-    //   email: "gauravrai3133@gmail.com",
-    //   name: "Gaurav Rai",
-    //   role: "vendor_admin",
-    // },
-    // {
-    //   email: "pradhanpratik219@gmail.com",
-    //   name: "Pratik Pradhan",
-    //   role: "vendor_admin",
-    // },
-    // {
-    //   email: "developers@sitarahub.com",
-    //   name: "Sitarahub Developers",
-    //   role: "vendor_owner",
-    // },
+    {
+      email: "sohamsawalakhe@gmail.com",
+      name: "Soham Sawalakhe",
+      role: "vendor_admin",
+    },
+    {
+      email: "gauravrai3133@gmail.com",
+      name: "Gaurav Rai",
+      role: "vendor_admin",
+    },
+    {
+      email: "pradhanpratik219@gmail.com",
+      name: "Pratik Pradhan",
+      role: "vendor_admin",
+    },
+    {
+      email: "developers@sitarahub.com",
+      name: "Sitarahub Developers",
+      role: "vendor_owner",
+    },
     {
       email: "developer.sitarahub@gmail.com",
       name: "Developers",
-      role: "vendor_owner",
+      role: "sales",
     },
   ];
 

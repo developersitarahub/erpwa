@@ -888,7 +888,7 @@ export default function InboxPage() {
   const chatId = searchParams.get("chatId");
 
   const [selectedConversation, setSelectedConversation] = useState<string>(
-    chatId || ""
+    chatId || "",
   );
   const [showChat, setShowChat] = useState(!!chatId);
   const readSentRef = useRef<Set<string>>(new Set());
@@ -910,18 +910,10 @@ export default function InboxPage() {
       const allLeadsRes = await api.get("/leads-management");
       // status_counts, total are also returned but we only need leads
       setAssignedLeads(allLeadsRes.data.data.leads || []);
-
     } catch (err) {
       console.error("❌ Failed to load inbox", err);
     }
   };
-
-  useEffect(() => {
-    loadInbox();
-    if (chatId) {
-      handleSelectConversation(chatId);
-    }
-  }, []);
 
   useInboxSocket({
     selectedConversation,
@@ -972,10 +964,14 @@ export default function InboxPage() {
               m.outboundPayload?.template ||
               (m.outboundPayload?.name
                 ? {
-                  footer: m.outboundPayload.footer,
-                  buttons: m.outboundPayload.buttons,
-                }
+                    footer: m.outboundPayload.footer,
+                    buttons: m.outboundPayload.buttons,
+                  }
                 : undefined),
+
+            // ✅ Map outboundPayload for interactive messages
+            outboundPayload: m.outboundPayload,
+            messageType: (m as any).messageType,
           };
         },
       );
@@ -993,11 +989,11 @@ export default function InboxPage() {
         prev.map((c) =>
           c.id === id
             ? {
-              ...c,
-              sessionStarted: res.data.sessionStarted,
-              sessionActive: res.data.sessionActive,
-              sessionExpiresAt: res.data.sessionExpiresAt,
-            }
+                ...c,
+                sessionStarted: res.data.sessionStarted,
+                sessionActive: res.data.sessionActive,
+                sessionExpiresAt: res.data.sessionExpiresAt,
+              }
             : c,
         ),
       );
@@ -1056,6 +1052,13 @@ export default function InboxPage() {
     }
   };
 
+  useEffect(() => {
+    loadInbox();
+    if (chatId) {
+      handleSelectConversation(chatId);
+    }
+  }, []);
+
   const currentConversation = conversations.find(
     (c) => c.id === selectedConversation,
   );
@@ -1063,8 +1066,9 @@ export default function InboxPage() {
   return (
     <div className="flex flex-col md:flex-row h-full overflow-hidden bg-background">
       <div
-        className={`${showChat ? "hidden md:block" : "block"
-          } w-full md:w-auto h-full flex-shrink-0`}
+        className={`${
+          showChat ? "hidden md:block" : "block"
+        } w-full md:w-auto h-full flex-shrink-0`}
       >
         <ConversationList
           conversations={conversations}

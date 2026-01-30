@@ -15,7 +15,9 @@ import {
   ChevronRight,
   Loader2,
   Globe,
-  Phone
+  Phone,
+  ShoppingBag,
+  Layers
 } from "lucide-react";
 import type { Category, Contact } from "@/lib/types";
 
@@ -44,6 +46,7 @@ interface Template {
     text: string;
     value?: string;
   }[];
+  templateType?: string;
 }
 
 export default function CreateTemplateCampaignModal({
@@ -160,6 +163,7 @@ export default function CreateTemplateCampaignModal({
         name: campaignName,
         templateId: selectedTemplate.id,
         language: selectedTemplate.languages[0].language,
+        language: selectedTemplate.languages[0].language,
         recipients: Array.from(selectedRecipients).map(id => {
           const contact = contacts.find(c => c.id === id);
           return contact?.mobile_number;
@@ -264,12 +268,29 @@ export default function CreateTemplateCampaignModal({
                               <p className="font-bold text-sm text-foreground group-hover:text-primary transition-colors">
                                 {t.displayName}
                               </p>
-                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${t.category === 'MARKETING' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30' :
-                                t.category === 'UTILITY' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' :
-                                  'bg-muted text-muted-foreground'
-                                }`}>
-                                {t.category}
-                              </span>
+                              <div className="flex gap-1 items-center">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${t.category === 'MARKETING' ? 'bg-orange-100 text-orange-600 dark:bg-orange-900/30' :
+                                  t.category === 'UTILITY' ? 'bg-blue-100 text-blue-600 dark:bg-blue-900/30' :
+                                    'bg-muted text-muted-foreground'
+                                  }`}>
+                                  {t.category}
+                                </span>
+                                {(t.templateType || "").toLowerCase() === "catalog" && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-purple-100 text-purple-600 dark:bg-purple-900/30 flex items-center gap-1">
+                                    <ShoppingBag className="w-3 h-3" /> Catalog
+                                  </span>
+                                )}
+                                {(t.templateType || "").toLowerCase() === "carousel" && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-pink-100 text-pink-600 dark:bg-pink-900/30 flex items-center gap-1">
+                                    <Layers className="w-3 h-3" /> Carousel
+                                  </span>
+                                )}
+                                {(!t.templateType || (t.templateType || "").toLowerCase() === "standard") && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-600 dark:bg-slate-800 flex items-center gap-1">
+                                    Standard
+                                  </span>
+                                )}
+                              </div>
                             </div>
                             <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed italic">
                               &ldquo;{t.languages[0]?.body}&rdquo;
@@ -293,7 +314,24 @@ export default function CreateTemplateCampaignModal({
                     </button>
                     <div>
                       <p className="font-bold text-lg text-foreground">{selectedTemplate.displayName}</p>
-                      <p className="text-[10px] text-primary font-bold uppercase tracking-widest">{selectedTemplate.category}</p>
+                      <div className="flex gap-2">
+                        <p className="text-[10px] text-primary font-bold uppercase tracking-widest">{selectedTemplate.category}</p>
+                        {(selectedTemplate.templateType || "").toLowerCase() === "catalog" && (
+                          <span className="text-[10px] text-purple-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                            <ShoppingBag className="w-3 h-3" /> Catalog
+                          </span>
+                        )}
+                        {(selectedTemplate.templateType || "").toLowerCase() === "carousel" && (
+                          <span className="text-[10px] text-pink-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                            <Layers className="w-3 h-3" /> Carousel
+                          </span>
+                        )}
+                        {(!selectedTemplate.templateType || (selectedTemplate.templateType || "").toLowerCase() === "standard") && (
+                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                            Standard
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -339,8 +377,8 @@ export default function CreateTemplateCampaignModal({
                                       setVariableModes(newModes);
                                     }}
                                     className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${variableModes[idx] === 'custom'
-                                        ? 'bg-white dark:bg-card text-foreground shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                      ? 'bg-white dark:bg-card text-foreground shadow-sm'
+                                      : 'text-muted-foreground hover:text-foreground'
                                       }`}
                                   >
                                     Custom
@@ -356,8 +394,8 @@ export default function CreateTemplateCampaignModal({
                                       setTemplateVariables(newVars);
                                     }}
                                     className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${variableModes[idx] === 'company'
-                                        ? 'bg-white dark:bg-card text-foreground shadow-sm'
-                                        : 'text-muted-foreground hover:text-foreground'
+                                      ? 'bg-white dark:bg-card text-foreground shadow-sm'
+                                      : 'text-muted-foreground hover:text-foreground'
                                       }`}
                                   >
                                     Company

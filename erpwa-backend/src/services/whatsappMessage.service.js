@@ -1,6 +1,7 @@
 import axios from "axios";
 import prisma from "../prisma.js";
 import { decrypt } from "../utils/encryption.js";
+import { getIO } from "../socket.js";
 
 /**
  * Validates and sends a WhatsApp message via Cloud API,
@@ -82,7 +83,7 @@ export async function sendMessage(vendorId, conversationId, contentObj) {
     const waMessageId = res.data.messages?.[0]?.id;
 
     if (waMessageId) {
-      await prisma.message.create({
+      const newMessage = await prisma.message.create({
         data: {
           vendorId,
           conversationId,
@@ -92,8 +93,35 @@ export async function sendMessage(vendorId, conversationId, contentObj) {
           content: bodyText,
           whatsappMessageId: waMessageId,
           status: "sent",
+          outboundPayload: whatsappPayload, // Save the interactive payload
         },
       });
+
+      // 5. Emit Socket Event for Real-time Update
+      try {
+        const io = getIO();
+        io.to(`conversation:${conversationId}`).emit("message:new", {
+          id: newMessage.id,
+          whatsappMessageId: newMessage.whatsappMessageId,
+          sender: "executive", // Treat bot messages as "executive" (outbound)
+          timestamp: newMessage.createdAt.toISOString(),
+          text:
+            contentObj.type === "text" || contentObj.type === "interactive"
+              ? bodyText
+              : undefined,
+          // Handle media if we add support for saving media urls in sendMessage later
+          // For now, chatbot images are usually links, not uploaded to our S3 in this flow necessarily,
+          // but if we wanted to show the image preview in chat:
+          mediaUrl:
+            contentObj.type === "image" ? contentObj.image.link : undefined,
+          caption:
+            contentObj.type === "image" ? contentObj.image.caption : undefined,
+          mimeType: contentObj.type === "image" ? "image/jpeg" : undefined, // Approximation or derived
+          outboundPayload: whatsappPayload,
+        });
+      } catch (err) {
+        console.error("Failed to emit socket event:", err);
+      }
     }
 
     return res.data;

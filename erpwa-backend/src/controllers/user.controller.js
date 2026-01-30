@@ -3,6 +3,7 @@ import { hashPassword } from "../utils/password.js";
 import { sendMail } from "../utils/mailer.js";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import { logActivity } from "../services/activityLog.service.js";
 
 // Force restart for prisma client update
 
@@ -133,22 +134,20 @@ export const createUser = async (req, res) => {
             });
         }
 
+
         // 📝 Log user creation activity
-        await prisma.activityLog.create({
-            data: {
-                event: "user_created",
-                type: "system",
-                status: "success",
-                metadata: {
-                    userId: user.id,
-                    userName: user.name,
-                    userEmail: user.email,
-                    userRole: user.role,
-                    createdBy: req.user.name,
-                    createdById: req.user.id,
-                },
-                vendorId: req.user.vendorId, // 🔒 Associate with vendor for proper filtering
-            },
+        await logActivity({
+            vendorId: req.user.vendorId,
+            status: "success",
+            event: "User Created (Pending)",
+            type: "User",
+            payload: {
+                userId: user.id,
+                userName: user.name,
+                userEmail: user.email,
+                userRole: user.role,
+                createdBy: req.user.name
+            }
         });
 
         res.status(201).json(user);
@@ -210,6 +209,20 @@ export const updateUser = async (req, res) => {
         });
 
         res.json(user);
+
+        // 📝 Log user update
+        await logActivity({
+            vendorId: req.user.vendorId,
+            status: "success",
+            event: "User Updated",
+            type: "System",
+            payload: {
+                userId: user.id,
+                userName: user.name,
+                userEmail: user.email,
+                updatedFields: Object.keys(updateData)
+            }
+        });
     } catch (error) {
         console.error("Update user error:", error);
         res.status(500).json({ message: "Failed to update user" });
@@ -247,6 +260,20 @@ export const deleteUser = async (req, res) => {
         });
 
         res.json({ message: "User deleted successfully" });
+
+        // 📝 Log user deletion
+        await logActivity({
+            vendorId: req.user.vendorId,
+            status: "success",
+            event: "User Deleted",
+            type: "System",
+            payload: {
+                userId: id,
+                userName: userToDelete.name,
+                userEmail: userToDelete.email,
+                deletedBy: req.user.name
+            }
+        });
     } catch (error) {
         // ...
         console.error("Delete user error:", error);
