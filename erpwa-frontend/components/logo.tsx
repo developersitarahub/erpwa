@@ -137,7 +137,7 @@ export function Logo({ className, collapsed, isSidebar = false }: LogoProps) {
     return (
         <div className={cn("flex items-center select-none", isSidebar && !collapsed ? "justify-start" : "justify-center", className)}>
             <svg
-                viewBox="0 0 500 220"
+                viewBox="0 0 600 230"
                 xmlns="http://www.w3.org/2000/svg"
                 shapeRendering="geometricPrecision"
                 className="w-full h-full"
@@ -146,7 +146,7 @@ export function Logo({ className, collapsed, isSidebar = false }: LogoProps) {
                 {styles}
                 <LogoIcon />
 
-                <g transform="translate(135, 122)">
+                <g transform="translate(130, 120)">
                     {isSidebar ? (
                         /* Sidebar Layout: Side-by-side */
                         <>

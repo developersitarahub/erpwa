@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         "/forgot-password",
         "/create-password",
         "/privacy-policy",
+        "/terms-n-condition",
       ];
       if (!publicPaths.includes(pathname)) {
         router.replace("/login");

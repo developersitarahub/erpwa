@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Mail, Lock } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, Shield } from "lucide-react"
 import { useAuth } from "@/context/authContext"
 import { Logo } from "@/components/logo"
 
@@ -122,6 +122,17 @@ export default function LoginPage() {
         <p className="mt-6 text-center text-sm text-muted-foreground">
           © {new Date().getFullYear()} GPS erp
         </p>
+        <div className="flex justify-center gap-4 mt-2 text-xs text-muted-foreground/80">
+          <a href="/privacy-policy" className="flex items-center gap-1.5 hover:text-primary transition-colors">
+            <Lock className="w-3 h-3" />
+            Privacy Policy
+          </a>
+          <div className="h-3 w-px bg-border/60" />
+          <a href="/terms-n-condition" className="flex items-center gap-1.5 hover:text-primary transition-colors">
+            <Shield className="w-3 h-3" />
+            Terms & Conditions
+          </a>
+        </div>
       </div>
     </div>
   )

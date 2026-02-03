@@ -241,6 +241,8 @@ router.post("/", async (req, res) => {
           } else if (interactive.type === "button_reply") {
             content = interactive.button_reply.title;
             // Also store ID if needed, but 'content' helps with workflow matching
+          } else if (interactive.type === "nfm_reply") {
+            content = interactive.nfm_reply.body || "Flow Response Submitted";
           } else {
             content = "[interactive]";
           }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -17,6 +18,7 @@ import {
   Clock,
   ShieldCheck,
   TrendingUp,
+  FileText,
 } from "lucide-react";
 import api from "@/lib/api";
 import FlowEditorModal from "@/components/flows/FlowEditorModal";
@@ -71,8 +73,10 @@ export default function FlowsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [showEditorModal, setShowEditorModal] = useState(false);
   const [showMetricsModal, setShowMetricsModal] = useState(false);
+
   const [selectedFlow, setSelectedFlow] = useState<Flow | null>(null);
   const [settingUpKey, setSettingUpKey] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     fetchFlows();
@@ -108,7 +112,7 @@ export default function FlowsPage() {
             console.error("Error setting up keys:", error);
             toast.error(
               error.response?.data?.message ||
-                "Failed to setup encryption keys",
+              "Failed to setup encryption keys",
             );
           } finally {
             setSettingUpKey(false);
@@ -401,49 +405,62 @@ export default function FlowsPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex flex-wrap gap-2">
-                    {flow.status === "DRAFT" && (
+                  <div className="flex items-center gap-3 pt-4 border-t border-border mt-auto">
+                    {/* Primary Action */}
+                    {flow.status === "DRAFT" ? (
                       <button
                         onClick={() => handlePublishFlow(flow.id)}
-                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
                       >
                         <Send className="w-4 h-4" />
                         Publish
                       </button>
-                    )}
-
-                    {flow.status === "PUBLISHED" && (
+                    ) : (
                       <button
-                        onClick={() => handleDeprecateFlow(flow.id)}
-                        className="flex-1 flex items-center justify-center gap-1 px-3 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors"
+                        onClick={() => handleEditFlow(flow)}
+                        className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg text-sm font-medium transition-colors shadow-sm"
                       >
-                        <Archive className="w-4 h-4" />
-                        Deprecate
+                        <Edit className="w-4 h-4" />
+                        Edit Flow
                       </button>
                     )}
 
-                    <button
-                      onClick={() => handleEditFlow(flow)}
-                      className="flex items-center justify-center gap-1 px-3 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-sm font-medium transition-colors"
-                    >
-                      <Edit className="w-4 h-4" />
-                      Edit
-                    </button>
+                    {/* Secondary Actions */}
+                    <div className="flex items-center gap-1 border-l border-border pl-3">
+                      <button
+                        onClick={() => router.push(`/admin/flows/${flow.id}/responses`)}
+                        className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors"
+                        title="View Responses"
+                      >
+                        <FileText className="w-4 h-4" />
+                      </button>
 
-                    <button
-                      onClick={() => handleViewMetrics(flow)}
-                      className="flex items-center justify-center gap-1 px-3 py-2 bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      <BarChart3 className="w-4 h-4" />
-                      Metrics
-                    </button>
+                      <button
+                        onClick={() => handleViewMetrics(flow)}
+                        className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground rounded-md transition-colors"
+                        title="View Analytics"
+                      >
+                        <BarChart3 className="w-4 h-4" />
+                      </button>
 
-                    <button
-                      onClick={() => handleDeleteFlow(flow.id)}
-                      className="flex items-center justify-center gap-1 px-3 py-2 bg-red-600/10 hover:bg-red-600/20 text-red-600 dark:text-red-400 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      {flow.status === "PUBLISHED" && (
+                        <button
+                          onClick={() => handleDeprecateFlow(flow.id)}
+                          className="p-2 hover:bg-orange-100 dark:hover:bg-orange-900/20 text-muted-foreground hover:text-orange-600 dark:hover:text-orange-400 rounded-md transition-colors"
+                          title="Deprecate Flow"
+                        >
+                          <Archive className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => handleDeleteFlow(flow.id)}
+                        className="p-2 hover:bg-red-100 dark:hover:bg-red-900/20 text-muted-foreground hover:text-red-600 dark:hover:text-red-400 rounded-md transition-colors"
+                        title="Delete Flow"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               ))}
@@ -480,6 +497,8 @@ export default function FlowsPage() {
           flowName={selectedFlow.name}
         />
       )}
+
+
     </div>
   );
 }
