@@ -525,7 +525,9 @@ router.post(
           value:
             btn.type === "URL" || btn.type === "PHONE_NUMBER"
               ? btn.value
-              : null,
+              : btn.type === "FLOW"
+                ? (btn.navigateScreen || btn.value) // Store screen ID for Flow buttons
+                : null,
           // Flow button support
           flowId: btn.type === "FLOW" ? btn.flowId : null,
           flowAction: btn.type === "FLOW" ? (btn.flowAction || "navigate") : null,
@@ -779,7 +781,11 @@ router.put(
             type: btn.type,
             text: btn.text,
             position: i,
-            value: (btn.type === "URL" || btn.type === "PHONE_NUMBER") ? btn.value : null,
+            value: (btn.type === "URL" || btn.type === "PHONE_NUMBER")
+              ? btn.value
+              : btn.type === "FLOW"
+                ? (btn.navigateScreen || btn.value)
+                : null,
             // Flow button support
             flowId: btn.type === "FLOW" ? btn.flowId : null,
             flowAction: btn.type === "FLOW" ? (btn.flowAction || "navigate") : null,
@@ -1005,17 +1011,25 @@ router.post(
             }
             if (b.type === "FLOW") {
               const metaFlowId = flowMap[b.flowId];
-              console.log(`Processing FLOW button. UUID: ${b.flowId}, MetaID: ${metaFlowId}, Action: ${b.flowAction}`);
+              // Extract screen ID from navigateScreen (new) or value (old)
+              const screenId = b.navigateScreen || b.value;
+
+              console.log(`Processing FLOW button. UUID: ${b.flowId}, MetaID: ${metaFlowId}, Action: ${b.flowAction}, Screen: ${screenId}`);
 
               if (!metaFlowId) {
                 throw new Error(`Validation Failed: The selected Flow (${b.flowId}) has no Meta ID. Ensure the Flow is created and synced correctly.`);
               }
+
+              if (!screenId) {
+                throw new Error(`Validation Failed: Navigate screen is required for Flow button. Please specify a valid screen ID.`);
+              }
+
               return {
                 type: "FLOW",
                 text: b.text,
                 flow_id: metaFlowId,
                 flow_action: b.flowAction || "navigate",
-                navigate_screen: b.value || "WELCOME"
+                navigate_screen: screenId
               };
             }
             return { type: "QUICK_REPLY", text: b.text };

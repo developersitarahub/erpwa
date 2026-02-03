@@ -223,6 +223,10 @@ export const updateFlow = async (req, res) => {
 
         // Update Flow JSON in Meta if provided
         if (flowJson) {
+            const screenCount = flowJson.screens ? flowJson.screens.length : 0;
+            console.log(`📝 Updating Flow JSON with ${screenCount} screens`);
+            console.log(`Screen IDs:`, flowJson.screens?.map(s => s.id) || []);
+
             await flowsService.updateFlowJSON(
                 existingFlow.metaFlowId,
                 flowJson,
@@ -447,6 +451,113 @@ export const deleteFlow = async (req, res) => {
 };
 
 /**
+ * Get Flow Responses
+ */
+export const getFlowResponses = async (req, res) => {
+    try {
+        const { vendorId } = req.user;
+        const { id: flowId } = req.params;
+        const { page = 1, limit = 20, status } = req.query;
+
+        // Verify Flow belongs to vendor
+        const flow = await prisma.whatsAppFlow.findFirst({
+            where: { id: flowId, vendorId }
+        });
+
+        if (!flow) {
+            return res.status(404).json({ success: false, message: 'Flow not found' });
+        }
+
+        // Build query
+        const where = {
+            flowId,
+            conversation: {
+                vendorId
+            }
+        };
+
+        if (status && status !== 'all') {
+            where.status = status;
+        }
+
+        // Get total count
+        const total = await prisma.flowResponse.count({ where });
+
+        // Get responses with pagination
+        const responses = await prisma.flowResponse.findMany({
+            where,
+            include: {
+                conversation: {
+                    include: {
+                        lead: {
+                            select: {
+                                companyName: true,
+                                phoneNumber: true,
+                                email: true
+                            }
+                        }
+                    }
+                }
+            },
+            orderBy: { createdAt: 'desc' },
+            skip: (parseInt(page) - 1) * parseInt(limit),
+            take: parseInt(limit)
+        });
+
+        res.json({
+            success: true,
+            responses,
+            pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total,
+                totalPages: Math.ceil(total / parseInt(limit))
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching Flow responses:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+/**
+ * Delete a Flow Response
+ */
+export const deleteFlowResponse = async (req, res) => {
+    try {
+        const { vendorId } = req.user;
+        const { id: flowId, responseId } = req.params;
+
+        // Verify Flow Response belongs to vendor (via Flow -> Vendor)
+        const response = await prisma.flowResponse.findFirst({
+            where: {
+                id: responseId,
+                flowId: flowId,
+                conversation: {
+                    vendorId
+                }
+            }
+        });
+
+        if (!response) {
+            return res.status(404).json({ success: false, message: 'Response not found or access denied' });
+        }
+
+        // Delete response
+        await prisma.flowResponse.delete({
+            where: { id: responseId }
+        });
+
+        res.json({ success: true, message: 'Response deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting Flow response:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+
+
+/**
  * Get Flow metrics/analytics
  */
 export const getFlowMetrics = async (req, res) => {
@@ -495,14 +606,14 @@ export const getFlowMetrics = async (req, res) => {
 
             const accessToken = decrypt(vendor.whatsappAccessToken);
 
-            const metaMetrics = await flowsService.getFlowMetrics(
-                flow.metaFlowId,
-                accessToken
-            );
+            // const metaMetrics = await flowsService.getFlowMetrics(
+            //     flow.metaFlowId,
+            //     accessToken
+            // );
 
-            if (metaMetrics) {
-                metrics.meta = metaMetrics;
-            }
+            // if (metaMetrics) {
+            //     metrics.meta = metaMetrics;
+            // }
         } catch (error) {
             console.warn('Could not fetch Meta metrics:', error.message);
         }
@@ -517,67 +628,6 @@ export const getFlowMetrics = async (req, res) => {
 /**
  * Get Flow responses (user submissions)
  */
-export const getFlowResponses = async (req, res) => {
-    try {
-        const { vendorId } = req.user;
-        const { id } = req.params;
-        const { page = 1, limit = 20, status } = req.query;
-
-        // Verify Flow belongs to vendor
-        const flow = await prisma.whatsAppFlow.findFirst({
-            where: { id, vendorId },
-            select: { id: true }
-        });
-
-        if (!flow) {
-            return res.status(404).json({ success: false, message: 'Flow not found' });
-        }
-
-        const skip = (parseInt(page) - 1) * parseInt(limit);
-
-        const where = {
-            flowId: id,
-            ...(status && { status })
-        };
-
-        const [responses, total] = await Promise.all([
-            prisma.flowResponse.findMany({
-                where,
-                skip,
-                take: parseInt(limit),
-                orderBy: { createdAt: 'desc' },
-                include: {
-                    conversation: {
-                        include: {
-                            lead: {
-                                select: {
-                                    phoneNumber: true,
-                                    email: true,
-                                    companyName: true
-                                }
-                            }
-                        }
-                    }
-                }
-            }),
-            prisma.flowResponse.count({ where })
-        ]);
-
-        res.json({
-            success: true,
-            responses,
-            pagination: {
-                page: parseInt(page),
-                limit: parseInt(limit),
-                total,
-                totalPages: Math.ceil(total / parseInt(limit))
-            }
-        });
-    } catch (error) {
-        console.error('Error fetching Flow responses:', error);
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
 
 /**
  * Setup Flow Encryption (Generate Keys and Upload to Meta)
@@ -647,9 +697,10 @@ import { decryptRequest, encryptResponse } from '../utils/flowsCrypto.js';
  */
 export const handleFlowEndpoint = async (req, res) => {
     try {
-        const { encrypted_aes_key, initial_vector, encrypted_flow_data } = req.body;
+        const { encrypted_flow_data, encrypted_aes_key, initial_vector } = req.body;
+        console.log("📨 RAW FLOW REQUEST RECEIVED:", JSON.stringify({ ...req.body, encrypted_flow_data: "..." }));
 
-        if (!encrypted_aes_key || !initial_vector || !encrypted_flow_data) {
+        if (!encrypted_flow_data || !encrypted_aes_key || !initial_vector) {
             return res.status(400).send('Missing required encrypted fields');
         }
 
@@ -686,6 +737,8 @@ export const handleFlowEndpoint = async (req, res) => {
 
         // 4. Handle Actions
         // Meta sends 'ping' for health checks
+        // 4. Handle Actions
+        // Meta sends 'ping' for health checks
         if (action === 'ping') {
             responsePayload = {
                 data: {
@@ -693,42 +746,250 @@ export const handleFlowEndpoint = async (req, res) => {
                 }
             };
         } else if (action === 'INIT') {
-            // Initial data exchange
+            let startScreenId = "WELCOME"; // Fallback
+
+            try {
+                const flowToken = decryptedData.flow_token;
+                if (flowToken) {
+                    const parts = flowToken.split('_');
+                    // Format: FLOWID_PHONE_TIMESTAMP
+                    if (parts.length >= 1) {
+                        const flowId = parts[0];
+                        // Validate format (e.g., UUID-like or shorter ID)
+                        if (flowId.length > 5) {
+                            const flow = await prisma.whatsAppFlow.findUnique({
+                                where: { id: flowId },
+                                select: { flowJson: true }
+                            });
+
+                            if (flow && flow.flowJson) {
+                                // Try to get start screen from preview or first screen in list
+                                const json = typeof flow.flowJson === 'string' ? JSON.parse(flow.flowJson) : flow.flowJson;
+
+                                if (json.screens && json.screens.length > 0) {
+                                    // Default to first screen in the array
+                                    startScreenId = json.screens[0].id;
+                                    console.log(`✅ Dynamically resolved start screen: ${startScreenId} for Flow: ${flowId}`);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error("Error fetching start screen:", err);
+            }
+
             responsePayload = {
-                screen: "START", // Or whatever your start screen is
+                screen: startScreenId,
                 data: {
                     // Return any initial data needed by the form
                 }
             };
         } else if (action === 'data_exchange') {
-            // Handle form submissions
             console.log('📝 Flow Data Received:', JSON.stringify(decryptedData, null, 2));
 
-            // Extract form data
-            const submissionData = decryptedData.data || {};
-            const waId = decryptedData.user?.wa_id; // The user's phone number
+            const submissionData = { ...(decryptedData.data || {}) };
+            // Remove internal navigation fields from stored data
+            delete submissionData.next_screen_id;
 
-            // Attempt to save to DB if possible
-            if (waId) {
+            let waId = decryptedData.user?.wa_id;
+            const flowToken = decryptedData.flow_token;
+
+            // Fallback: Extract waId from flow_token (Format: flowId_waId_timestamp)
+            if (!waId && flowToken) {
+                const parts = flowToken.split('_');
+                if (parts.length >= 2) {
+                    waId = parts[1];
+                }
+            }
+
+            if (waId && vendor) {
+                // Determine next screen EARLY to set status correctly
+                const currentScreen = decryptedData.screen || "START";
+                let nextScreen = "SUCCESS"; // Default fallback
+
+                // 1. Check if next_screen_id was sent in payload
+                if (decryptedData.data?.next_screen_id) {
+                    nextScreen = decryptedData.data.next_screen_id;
+                    console.log(`🧭 Using UI-defined next screen: ${nextScreen}`);
+                }
+                // 2. Fallback logic
+                else {
+                    if (currentScreen === "START") {
+                        nextScreen = "Q";
+                    } else if (currentScreen === "Q") {
+                        nextScreen = "SUCCESS";
+                    }
+                }
+                // 3. Determine Status by checking if nextScreen is TERMINAL
+                let status = "in_progress";
+
                 try {
-                    // 1. Find Flow ID from db? We don't have it easily from just the endpoint unless we lookup by private key owner
-                    // But we have vendor.
-                    // For this demo, we will try to find the flow based on ID if passed, or just Log.
+                    // Extract Flow ID from Token (Format: FLOWID_WAID_TIMESTAMP)
+                    const flowId = flowToken ? flowToken.split('_')[0] : null;
 
-                    // 2. Find Conversation (or just user)
-                    // This is complex without session context. 
-                    // We will just Log for the user to see "It Works"
-                } catch (e) { console.error("Save Error", e); }
+                    if (flowId) {
+                        const flow = await prisma.whatsAppFlow.findUnique({
+                            where: { id: flowId },
+                            select: { flowJson: true }
+                        });
+
+                        if (flow && flow.flowJson) {
+                            const json = typeof flow.flowJson === 'string' ? JSON.parse(flow.flowJson) : flow.flowJson;
+                            const targetScreenNode = json.screens?.find(s => s.id === nextScreen);
+
+                            if (targetScreenNode?.terminal) {
+                                status = "completed";
+                            }
+                        }
+                    } else if (nextScreen === "SUCCESS" || nextScreen === "success") {
+                        // Fallback for legacy
+                        status = "completed";
+                    }
+                } catch (err) {
+                    console.error("Error determining terminal status:", err);
+                    // Fallback
+                    if (nextScreen === "SUCCESS") status = "completed";
+                }
+
+                console.log(`📍 Current Screen: ${currentScreen} → Next Screen: ${nextScreen} [Status: ${status}]`);
+
+                try {
+                    // Normalize Phone Numbers (Check both + and non-+)
+                    let lead = await prisma.lead.findFirst({
+                        where: {
+                            vendorId: vendor.id,
+                            OR: [
+                                { phoneNumber: waId },
+                                { phoneNumber: `+${waId}` },
+                                { phoneNumber: waId.replace('+', '') }
+                            ]
+                        }
+                    });
+
+                    // Log the attempt (Visible in Dashboard)
+                    await prisma.activityLog.create({
+                        data: {
+                            vendorId: vendor.id,
+                            type: 'flow_endpoint_hit',
+                            status: 'received',
+                            phoneNumber: waId,
+                            event: 'data_exchange',
+                            payload: { flowToken, ...submissionData },
+                            whatsappBusinessId: vendor.whatsappBusinessId
+                        }
+                    });
+
+                    if (lead) {
+                        let conversation = await prisma.conversation.findFirst({
+                            where: { vendorId: vendor.id, leadId: lead.id }
+                        });
+
+                        if (!conversation) {
+                            conversation = await prisma.conversation.create({
+                                data: { vendorId: vendor.id, leadId: lead.id, channel: 'whatsapp' }
+                            });
+                        }
+
+                        // Save Response
+                        let flowId = null;
+                        if (flowToken) {
+                            const parts = flowToken.split('_');
+                            // If UUID format (simple check: length > 20)
+                            if (parts[0] && parts[0].length > 10) {
+                                flowId = parts[0];
+                            }
+                        }
+
+                        // Check if response already exists for this token
+                        const existingResponse = await prisma.flowResponse.findFirst({
+                            where: { flowToken }
+                        });
+
+                        if (existingResponse) {
+                            // Merge new data with existing data
+                            const mergedData = {
+                                ...(existingResponse.responseData || {}),
+                                ...submissionData
+                            };
+
+                            await prisma.flowResponse.update({
+                                where: { id: existingResponse.id },
+                                data: {
+                                    responseData: mergedData,
+                                    status: status,
+                                    // Set completedAt if finishing
+                                    ...(status === 'completed' && { completedAt: new Date() })
+                                }
+                            });
+                            console.log('✅ Flow Response UPDATED in DB');
+                        } else {
+                            // Create new response
+                            await prisma.flowResponse.create({
+                                data: {
+                                    conversationId: conversation.id,
+                                    responseData: submissionData,
+                                    flowToken: flowToken,
+                                    responseData: submissionData,
+                                    flowToken: flowToken,
+                                    status: status,
+                                    ...(flowId && { flowId })
+                                }
+                            });
+                            console.log('✅ Flow Response CREATED in DB');
+                        }
+                        console.log('✅ Flow Response Saved to DB');
+                    } else {
+                        console.warn(`⚠️ Lead not found for number: ${waId}. Flow data logged but not linked to lead.`);
+                    }
+                } catch (e) {
+                    console.error("Save Error", e);
+                }
+            }
+
+            // Determine next screen based on current screen
+            const currentScreen = decryptedData.screen || "START";
+            let nextScreen = "SUCCESS"; // Default fallback
+
+            // 1. Check if next_screen_id was sent in payload (from Visual Builder)
+            if (decryptedData.data?.next_screen_id) {
+                nextScreen = decryptedData.data.next_screen_id;
+                console.log(`🧭 Using UI-defined next screen: ${nextScreen}`);
+            }
+            // 2. Fallback to hardcoded logic if no target screen defined
+            else {
+                if (currentScreen === "START") {
+                    nextScreen = "Q"; // Go to question screen
+                } else if (currentScreen === "Q") {
+                    nextScreen = "SUCCESS"; // Go to success screen
+                }
+            }
+
+            console.log(`📍 Current Screen: ${currentScreen} → Next Screen: ${nextScreen}`);
+
+            const responseData = {};
+
+            // Only include flow_token/params if this is the SUCCESS screen (Terminal)
+            if (nextScreen === "SUCCESS") {
+                responseData.extension_message_response = {
+                    params: { flow_token: flowToken }
+                };
             }
 
             responsePayload = {
-                screen: "SUCCESS",
+                screen: nextScreen,
+                data: responseData
+            };
+        } else if (action === 'navigate') {
+            // Client error report or state change?
+            // Meta sends this when an error occurs like 'invalid-screen-transition'
+            // We should just acknowledge it to prevent 'Something went wrong' generic error
+            console.warn('⚠️ Received client validation report:', decryptedData.data);
+
+            // Return empty SUCCESS or similar to appease the client
+            responsePayload = {
                 data: {
-                    extension_message_response: {
-                        params: {
-                            flow_token: decryptedData.flow_token,
-                        }
-                    }
+                    acknowledged: true
                 }
             };
         } else {
@@ -736,6 +997,8 @@ export const handleFlowEndpoint = async (req, res) => {
             // Return fallback
             responsePayload = { data: {} };
         }
+
+        console.log("📤 Sending Response Payload:", JSON.stringify(responsePayload, null, 2));
 
         // 5. Encrypt Response
         const encryptedResponse = encryptResponse(responsePayload, aesKey, iv);
@@ -760,6 +1023,8 @@ export default {
     deleteFlow,
     getFlowMetrics,
     getFlowResponses,
+    deleteFlowResponse,
     setupFlowsEncryption,
     handleFlowEndpoint
 };
+

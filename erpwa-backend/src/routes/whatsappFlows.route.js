@@ -47,4 +47,7 @@ router.get('/:id/metrics', flowsController.getFlowMetrics);
 // Get Flow responses (user submissions)
 router.get('/:id/responses', flowsController.getFlowResponses);
 
+// Delete Flow response
+router.delete('/:id/responses/:responseId', flowsController.deleteFlowResponse);
+
 export default router;

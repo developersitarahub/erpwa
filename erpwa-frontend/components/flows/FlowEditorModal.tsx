@@ -33,96 +33,24 @@ const SAMPLE_FLOW_JSON = {
   version: "6.0",
   data_api_version: "3.0",
   routing_model: {
-    WELCOME: ["FORM"],
-    FORM: ["SUCCESS"],
-    SUCCESS: [],
+    START: [],
   },
   screens: [
     {
-      id: "WELCOME",
-      title: "Welcome",
+      id: "START",
+      title: "Start Screen",
       data: {},
+      terminal: false,
       layout: {
         type: "SingleColumnLayout",
         children: [
-          { type: "TextHeading", text: "Book an Appointment" },
-          { type: "TextBody", text: "Schedule a call with our experts." },
+          { type: "TextHeading", text: "Welcome" },
           {
             type: "Footer",
-            label: "Start",
-            "on-click-action": {
-              name: "navigate",
-              next: { type: "screen", name: "FORM" },
-              payload: {},
-            },
-          },
-        ],
-      },
-    },
-    {
-      id: "FORM",
-      title: "Your Details",
-      data: {},
-      layout: {
-        type: "SingleColumnLayout",
-        children: [
-          {
-            type: "Form",
-            name: "booking_form",
-            children: [
-              {
-                type: "TextInput",
-                name: "full_name",
-                label: "Full Name",
-                required: true,
-                "input-type": "text",
-              },
-              {
-                type: "Dropdown",
-                name: "service_type",
-                label: "Select Service",
-                required: true,
-                "data-source": [
-                  { id: "consultation", title: "Consultation" },
-                  { id: "support", title: "Technical Support" },
-                  { id: "sales", title: "Sales Inquiry" },
-                ],
-              },
-              {
-                type: "Footer",
-                label: "Book Now",
-                "on-click-action": {
-                  name: "data_exchange",
-                  payload: {
-                    name: "${form.full_name}",
-                    service: "${form.service_type}",
-                  },
-                },
-              },
-            ],
-          },
-        ],
-      },
-    },
-    {
-      id: "SUCCESS",
-      title: "Confirmed",
-      data: {},
-      terminal: true,
-      layout: {
-        type: "SingleColumnLayout",
-        children: [
-          { type: "TextHeading", text: "Booking Received" },
-          {
-            type: "TextBody",
-            text: "Thank you! We have received your booking request.",
-          },
-          {
-            type: "Footer",
-            label: "Done",
+            label: "Continue",
             "on-click-action": {
               name: "complete",
-              payload: { status: "booked" },
+              payload: {},
             },
           },
         ],
@@ -281,9 +209,17 @@ export default function FlowEditorModal({
       // Load into Visual Builder
       try {
         if (flow.flowJson) {
-          const parsedScreens = parseJSONToScreens(flow.flowJson);
+          let json = flow.flowJson;
+          if (typeof json === "string") {
+            try {
+              json = JSON.parse(json);
+            } catch (e) {
+              console.error("Error parsing flowJson string:", e);
+            }
+          }
+          const parsedScreens = parseJSONToScreens(json);
           setScreens(parsedScreens);
-          setActiveScreenId(parsedScreens[0]?.id || "WELCOME");
+          setActiveScreenId(parsedScreens[0]?.id || "START");
         }
       } catch (e) {
         console.error("Failed to parse existing flow for builder", e);
@@ -318,7 +254,12 @@ export default function FlowEditorModal({
 
   const handleSave = async (currentJsonString?: string) => {
     try {
-      const jsonToSave = currentJsonString || formData.flowJson;
+      let jsonToSave = currentJsonString || formData.flowJson;
+
+      // Ensure JSON is up-to-date if saving from Builder tab
+      if (activeTab === "builder" && !currentJsonString) {
+        jsonToSave = generateJSONFromScreens();
+      }
 
       // Validate JSON first
       const parsedJson = validateJSON(jsonToSave);
@@ -338,7 +279,11 @@ export default function FlowEditorModal({
         return;
       }
       try {
-        new URL(formData.endpointUri);
+        const url = new URL(formData.endpointUri);
+        if (url.protocol === 'http:') {
+          toast.error("Endpoint must be HTTPS (Meta Requirement). Use ngrok/tunnel.");
+          return;
+        }
       } catch (e) {
         toast.error("Endpoint URI must be a valid URL");
         return;
@@ -435,58 +380,17 @@ export default function FlowEditorModal({
 
   const [screens, setScreens] = useState<FlowScreen[]>([
     {
-      id: "WELCOME",
-      title: "Welcome",
+      id: "START",
+      title: "Start Screen",
       terminal: false,
       children: [
         { id: "c1", type: "TextHeading", data: { text: "Welcome" } },
-        {
-          id: "c2",
-          type: "TextBody",
-          data: { text: "Please fill out the form below." },
-        },
-        { id: "c3", type: "Footer", data: { label: "Start", onNext: "FORM" } },
-      ],
-    },
-    {
-      id: "FORM",
-      title: "Form",
-      terminal: false,
-      children: [
-        {
-          id: "c4",
-          type: "TextInput",
-          data: {
-            label: "Full Name",
-            name: "name",
-            required: true,
-            inputType: "text",
-          },
-        },
-        {
-          id: "c5",
-          type: "Footer",
-          data: { label: "Submit", onNext: "SUCCESS" },
-        },
-      ],
-    },
-    {
-      id: "SUCCESS",
-      title: "Success",
-      terminal: true,
-      children: [
-        { id: "c6", type: "TextHeading", data: { text: "Thank You!" } },
-        {
-          id: "c7",
-          type: "TextBody",
-          data: { text: "Your response has been saved." },
-        },
-        { id: "c8", type: "Footer", data: { label: "Close", onNext: null } },
+        { id: "c2", type: "Footer", data: { label: "Continue", onNext: null } },
       ],
     },
   ]);
 
-  const [activeScreenId, setActiveScreenId] = useState<string>("WELCOME");
+  const [activeScreenId, setActiveScreenId] = useState<string>("START");
   const [selectedComponentId, setSelectedComponentId] = useState<string | null>(
     null,
   );
@@ -503,14 +407,27 @@ export default function FlowEditorModal({
 
   // --- JSON GENERATION ---
   const generateJSONFromScreens = () => {
+    console.log(`🔧 Generating JSON from ${screens.length} screens:`, screens.map(s => s.id));
     const screensJson = screens.map((screen) => {
+      // Determine if this screen has connectable inputs
+      const inputFields = screen.children.filter((c) =>
+        [
+          "TextInput",
+          "Dropdown",
+          "RadioButtons",
+          "CheckboxGroup",
+          "DatePicker",
+        ].includes(c.type)
+      );
+      const hasInputs = inputFields.length > 0;
+
       const childrenJson = screen.children
         .map((comp) => {
+          // ... (Component mappings same as before, simplified for Footer)
           switch (comp.type) {
             case "TextHeading":
-              return { type: "TextHeading", text: comp.data.text };
             case "TextBody":
-              return { type: "TextBody", text: comp.data.text };
+              return { type: comp.type, text: comp.data.text };
             case "TextInput":
               return {
                 type: "TextInput",
@@ -520,24 +437,10 @@ export default function FlowEditorModal({
                 "input-type": comp.data.inputType || "text",
               };
             case "Dropdown":
-              return {
-                type: "Dropdown",
-                name: comp.data.name,
-                label: comp.data.label,
-                required: comp.data.required,
-                "data-source": comp.data.options || [],
-              };
             case "RadioButtons":
-              return {
-                type: "RadioButtons",
-                name: comp.data.name,
-                label: comp.data.label,
-                required: comp.data.required,
-                "data-source": comp.data.options || [],
-              };
             case "CheckboxGroup":
               return {
-                type: "CheckboxGroup",
+                type: comp.type,
                 name: comp.data.name,
                 label: comp.data.label,
                 required: comp.data.required,
@@ -551,44 +454,47 @@ export default function FlowEditorModal({
                 required: comp.data.required,
               };
             case "Footer":
-              const actionType = comp.data.actionType || "navigate"; // Default
-              const nextId = comp.data.nextScreenId;
-
+              // SMART ACTION LOGIC - Respect Explicit Action Type
               let action: any = {};
+              const actionType = comp.data.actionType || "navigate";
+              const nextScreenId = comp.data.nextScreenId;
 
-              if (actionType === "complete") {
+              if (screen.terminal) {
+                // Terminal screens MUST use complete action
                 action = { name: "complete", payload: {} };
-              } else if (actionType === "data_exchange") {
-                // Harvest payload from CURRENT screen inputs
-                // (Simplified: grabs all inputs on this screen)
-                const formFields = screen.children.filter((c) =>
-                  [
-                    "TextInput",
-                    "Dropdown",
-                    "RadioButtons",
-                    "CheckboxGroup",
-                    "DatePicker",
-                  ].includes(c.type),
-                );
-                const payload: any = {};
-                formFields.forEach((f) => {
-                  payload[f.data.name] = `\${form.${f.data.name}}`;
-                });
-
-                action = { name: "data_exchange", payload };
-              } else {
-                // Navigate
-                // Ensure nextId is valid
-                if (nextId) {
+              } else if (actionType === "complete") {
+                action = { name: "complete", payload: {} };
+              } else if (actionType === "navigate") {
+                if (nextScreenId) {
                   action = {
                     name: "navigate",
-                    next: { type: "screen", name: nextId },
+                    next: { type: "screen", name: nextScreenId },
                     payload: {},
                   };
                 } else {
-                  // Fallback if no screen selected
+                  // Fallback: navigate to nowhere -> complete
+                  console.warn(`⚠️ Screen "${screen.id}" has navigate action but no target screen. Defaulting to complete.`);
                   action = { name: "complete", payload: {} };
                 }
+              } else if (actionType === "data_exchange") {
+                const payload: any = {};
+                // Gather inputs if any
+                if (hasInputs) {
+                  inputFields.forEach((f) => {
+                    // Use 'form' context for safer field access
+                    payload[f.data.name] = `\${form.${f.data.name}}`;
+                  });
+                }
+
+                if (nextScreenId) {
+                  payload.next_screen_id = nextScreenId;
+                }
+
+                // Even if no inputs, data_exchange is valid (triggers server flow logic)
+                action = { name: "data_exchange", payload };
+              } else {
+                // Fallback
+                action = { name: "complete", payload: {} };
               }
 
               return {
@@ -614,28 +520,33 @@ export default function FlowEditorModal({
       };
     });
 
-    // Routing Model (Auto-generated based on Footers)
+    // Valid Routing Model Generation
     const routing_model: any = {};
+
+    // Initialize all screens in routing model
+    screens.forEach(s => {
+      routing_model[s.id] = [];
+    });
+
     screens.forEach((s) => {
+      // Terminal screens must have empty routing model (no outbound links allowed)
+      if (s.terminal) return;
+
       const footer = s.children.find((c) => c.type === "Footer");
 
-      // Logic: If footer exists and defines a next screen (either via navigate or exchange), add it
       if (footer) {
         const actionType = footer.data.actionType || "navigate";
-        const nextId = footer.data.nextScreenId;
+        const nextScreenId = footer.data.nextScreenId;
 
-        // CRITICAL FIX: Even for 'data_exchange', Meta MUST know the potential next screen
-        if (
-          (actionType === "navigate" || actionType === "data_exchange") &&
-          nextId
-        ) {
-          routing_model[s.id] = [nextId];
-        } else {
-          routing_model[s.id] = [];
+        if (actionType !== "complete" && nextScreenId) {
+          const targetExists = screens.some((scr) => scr.id === nextScreenId);
+
+          if (targetExists) {
+            if (!routing_model[s.id].includes(nextScreenId)) {
+              routing_model[s.id].push(nextScreenId);
+            }
+          }
         }
-      } else {
-        // No footer? Dead end (or terminal)
-        routing_model[s.id] = [];
       }
     });
 
@@ -646,6 +557,7 @@ export default function FlowEditorModal({
       screens: screensJson,
     };
 
+    console.log(`✅ Generated Flow JSON with ${screensJson.length} screens`);
     const newJsonString = JSON.stringify(fullJson, null, 2);
     setFormData((prev) => ({ ...prev, flowJson: newJsonString }));
     return newJsonString;
@@ -653,11 +565,34 @@ export default function FlowEditorModal({
 
   // --- ACTIONS ---
   const addScreen = () => {
-    const id = `SCREEN_${screens.length + 1}`;
-    setScreens([
-      ...screens,
-      { id, title: "New Screen", terminal: false, children: [] },
-    ]);
+    let suffix = screens.length + 1;
+    let id = `SCREEN_${suffix}`;
+    while (screens.some((s) => s.id === id)) {
+      suffix++;
+      id = `SCREEN_${suffix}`;
+    }
+    const newScreen: FlowScreen = {
+      id,
+      title: "New Screen",
+      terminal: false,
+      children: [
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          type: "TextHeading",
+          data: { text: "New Screen" }
+        },
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          type: "Footer",
+          data: {
+            label: "Continue",
+            actionType: "complete",
+            nextScreenId: ""
+          }
+        }
+      ],
+    };
+    setScreens([...screens, newScreen]);
     setActiveScreenId(id);
   };
 
@@ -672,13 +607,20 @@ export default function FlowEditorModal({
     const newComp: FlowComponent = {
       id: Math.random().toString(36).substr(2, 9),
       type,
-      data: {
-        label: "New Component",
-        text: "Text Content",
-        name: `field_${Math.floor(Math.random() * 1000)}`,
-        required: true,
-        options: [{ id: "1", title: "Option 1" }],
-      },
+      data:
+        type === "Footer"
+          ? {
+            label: "Continue",
+            actionType: "complete",
+            nextScreenId: "",
+          }
+          : {
+            label: "New Component",
+            text: "Text Content",
+            name: `field_${Math.floor(Math.random() * 1000)}`,
+            required: true,
+            options: [{ id: "1", title: "Option 1" }],
+          },
     };
 
     setScreens(
@@ -800,12 +742,19 @@ export default function FlowEditorModal({
               />
               <div className="flex justify-end mt-1">
                 <button
-                  onClick={() =>
+                  onClick={() => {
+                    const protocol = window.location.protocol;
+                    if (protocol === "http:") {
+                      toast.warning(
+                        "Meta requires a public HTTPS URL. Use ngrok or a deployed URL.",
+                        { autoClose: 5000 },
+                      );
+                    }
                     setFormData({
                       ...formData,
-                      endpointUri: `${window.location.protocol}//${window.location.host}/api/whatsapp/flows/endpoint`,
-                    })
-                  }
+                      endpointUri: `${protocol}//${window.location.host}/api/whatsapp/flows/endpoint`,
+                    });
+                  }}
                   className="text-[10px] text-primary hover:underline"
                 >
                   Use Default Endpoint
@@ -1014,66 +963,66 @@ export default function FlowEditorModal({
 
                                 {(comp.type === "TextInput" ||
                                   comp.type === "DatePicker") && (
-                                  <div className="space-y-1">
-                                    <label className="text-xs font-bold text-zinc-500 flex gap-0.5">
-                                      {comp.data.label}{" "}
-                                      {comp.data.required && (
-                                        <span className="text-red-500">*</span>
-                                      )}
-                                    </label>
-                                    <div className="h-10 w-full bg-transparent border border-zinc-300 rounded-lg px-3 flex items-center text-sm text-zinc-400">
-                                      {comp.type === "TextInput" ? (
-                                        <span className="truncate">
-                                          {comp.data.text ||
-                                            `Enter ${comp.data.label}`}
-                                        </span>
-                                      ) : (
-                                        "DD/MM/YYYY"
-                                      )}
+                                    <div className="space-y-1">
+                                      <label className="text-xs font-bold text-zinc-500 flex gap-0.5">
+                                        {comp.data.label}{" "}
+                                        {comp.data.required && (
+                                          <span className="text-red-500">*</span>
+                                        )}
+                                      </label>
+                                      <div className="h-10 w-full bg-transparent border border-zinc-300 rounded-lg px-3 flex items-center text-sm text-zinc-400">
+                                        {comp.type === "TextInput" ? (
+                                          <span className="truncate">
+                                            {comp.data.text ||
+                                              `Enter ${comp.data.label}`}
+                                          </span>
+                                        ) : (
+                                          "DD/MM/YYYY"
+                                        )}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  )}
 
                                 {(comp.type === "Dropdown" ||
                                   comp.type === "RadioButtons" ||
                                   comp.type === "CheckboxGroup") && (
-                                  <div className="space-y-1">
-                                    <label className="text-xs font-bold text-zinc-500 flex gap-0.5">
-                                      {comp.data.label}{" "}
-                                      {comp.data.required && (
-                                        <span className="text-red-500">*</span>
-                                      )}
-                                    </label>
-                                    {comp.type === "Dropdown" ? (
-                                      <div className="h-10 w-full bg-transparent border border-zinc-300 rounded-lg px-3 flex items-center justify-between text-sm text-zinc-400">
-                                        <span>Select...</span>
-                                        <span className="opacity-50">▼</span>
-                                      </div>
-                                    ) : (
-                                      <div className="space-y-2 pt-1">
-                                        {comp.data.options?.map((opt: any) => (
-                                          <div
-                                            key={opt.id}
-                                            className="flex items-center gap-2"
-                                          >
-                                            <div
-                                              className={`w-5 h-5 border border-zinc-400 ${comp.type === "RadioButtons" ? "rounded-full" : "rounded-md"} flex items-center justify-center`}
-                                            ></div>
-                                            <span className="text-sm text-zinc-700">
-                                              {opt.title || opt.id}
-                                            </span>
-                                          </div>
-                                        ))}
-                                        {(!comp.data.options ||
-                                          comp.data.options.length === 0) && (
-                                          <span className="text-[10px] italic text-zinc-400">
-                                            No options added
-                                          </span>
+                                    <div className="space-y-1">
+                                      <label className="text-xs font-bold text-zinc-500 flex gap-0.5">
+                                        {comp.data.label}{" "}
+                                        {comp.data.required && (
+                                          <span className="text-red-500">*</span>
                                         )}
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                                      </label>
+                                      {comp.type === "Dropdown" ? (
+                                        <div className="h-10 w-full bg-transparent border border-zinc-300 rounded-lg px-3 flex items-center justify-between text-sm text-zinc-400">
+                                          <span>Select...</span>
+                                          <span className="opacity-50">▼</span>
+                                        </div>
+                                      ) : (
+                                        <div className="space-y-2 pt-1">
+                                          {comp.data.options?.map((opt: any) => (
+                                            <div
+                                              key={opt.id}
+                                              className="flex items-center gap-2"
+                                            >
+                                              <div
+                                                className={`w-5 h-5 border border-zinc-400 ${comp.type === "RadioButtons" ? "rounded-full" : "rounded-md"} flex items-center justify-center`}
+                                              ></div>
+                                              <span className="text-sm text-zinc-700">
+                                                {opt.title || opt.id}
+                                              </span>
+                                            </div>
+                                          ))}
+                                          {(!comp.data.options ||
+                                            comp.data.options.length === 0) && (
+                                              <span className="text-[10px] italic text-zinc-400">
+                                                No options added
+                                              </span>
+                                            )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
 
                                 {comp.type === "Footer" && (
                                   <div className="mt-4 pt-2">
@@ -1229,10 +1178,33 @@ export default function FlowEditorModal({
                                     ID
                                   </label>
                                   <input
-                                    className="w-full text-xs font-mono bg-background border px-2 py-1.5 rounded disabled:opacity-50"
+                                    className="w-full text-xs font-mono bg-background border px-2 py-1.5 rounded"
                                     value={activeScreenContext?.id}
-                                    disabled
+                                    onChange={(e) => {
+                                      const oldId = activeScreenContext?.id;
+                                      const newId = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"); // Enforce valid ID format
+                                      if (!oldId) return;
+
+                                      setScreens(screens.map(s => {
+                                        if (s.id === oldId) return { ...s, id: newId };
+                                        // Update references in other screens' footers
+                                        return {
+                                          ...s,
+                                          children: s.children.map(c => {
+                                            if (c.type === 'Footer' && c.data.nextScreenId === oldId) {
+                                              return { ...c, data: { ...c.data, nextScreenId: newId } };
+                                            }
+                                            return c;
+                                          })
+                                        };
+                                      }));
+                                      setActiveScreenId(newId);
+                                    }}
+                                    placeholder="e.g., START, QUESTION_1"
                                   />
+                                  <p className="text-[9px] text-muted-foreground mt-1">
+                                    Used in navigation. Must be unique and uppercase.
+                                  </p>
                                 </div>
                                 <div>
                                   <label className="text-[10px] uppercase font-bold text-muted-foreground">
@@ -1265,9 +1237,9 @@ export default function FlowEditorModal({
                                           screens.map((s) =>
                                             s.id === activeScreenId
                                               ? {
-                                                  ...s,
-                                                  terminal: e.target.checked,
-                                                }
+                                                ...s,
+                                                terminal: e.target.checked,
+                                              }
                                               : s,
                                           ),
                                         )
@@ -1317,26 +1289,26 @@ export default function FlowEditorModal({
                                 {(selectedComponentContext?.type ===
                                   "TextHeading" ||
                                   selectedComponentContext?.type ===
-                                    "TextBody") && (
-                                  <div>
-                                    <label className="text-[10px] uppercase font-bold text-muted-foreground">
-                                      Text Content
-                                    </label>
-                                    <textarea
-                                      className="w-full text-xs bg-background border px-2 py-1.5 rounded min-h-[80px]"
-                                      value={
-                                        selectedComponentContext?.data.text ||
-                                        ""
-                                      }
-                                      onChange={(e) =>
-                                        selectedComponentId &&
-                                        updateComponent(selectedComponentId, {
-                                          text: e.target.value,
-                                        })
-                                      }
-                                    />
-                                  </div>
-                                )}
+                                  "TextBody") && (
+                                    <div>
+                                      <label className="text-[10px] uppercase font-bold text-muted-foreground">
+                                        Text Content
+                                      </label>
+                                      <textarea
+                                        className="w-full text-xs bg-background border px-2 py-1.5 rounded min-h-[80px]"
+                                        value={
+                                          selectedComponentContext?.data.text ||
+                                          ""
+                                        }
+                                        onChange={(e) =>
+                                          selectedComponentId &&
+                                          updateComponent(selectedComponentId, {
+                                            text: e.target.value,
+                                          })
+                                        }
+                                      />
+                                    </div>
+                                  )}
 
                                 {/* 2. Input Fields: Label & Name & Required */}
                                 {[
@@ -1349,194 +1321,194 @@ export default function FlowEditorModal({
                                 ].includes(
                                   selectedComponentContext?.type || "",
                                 ) && (
-                                  <div className="space-y-3">
-                                    <div>
-                                      <label className="text-[10px] uppercase font-bold text-muted-foreground">
-                                        Label / Button Text
-                                      </label>
-                                      <input
-                                        type="text"
-                                        className="w-full text-xs bg-background border px-2 py-1.5 rounded"
-                                        value={
-                                          selectedComponentContext?.data
-                                            .label || ""
-                                        }
-                                        onChange={(e) =>
-                                          selectedComponentId &&
-                                          updateComponent(selectedComponentId, {
-                                            label: e.target.value,
-                                          })
-                                        }
-                                      />
-                                    </div>
+                                    <div className="space-y-3">
+                                      <div>
+                                        <label className="text-[10px] uppercase font-bold text-muted-foreground">
+                                          Label / Button Text
+                                        </label>
+                                        <input
+                                          type="text"
+                                          className="w-full text-xs bg-background border px-2 py-1.5 rounded"
+                                          value={
+                                            selectedComponentContext?.data
+                                              .label || ""
+                                          }
+                                          onChange={(e) =>
+                                            selectedComponentId &&
+                                            updateComponent(selectedComponentId, {
+                                              label: e.target.value,
+                                            })
+                                          }
+                                        />
+                                      </div>
 
-                                    {selectedComponentContext?.type !==
-                                      "Footer" && (
-                                      <>
-                                        <div>
-                                          <label className="text-[10px] uppercase font-bold text-muted-foreground">
-                                            Field Name (ID)
-                                          </label>
-                                          <input
-                                            type="text"
-                                            className="w-full text-xs bg-background border px-2 py-1.5 rounded font-mono"
-                                            value={
-                                              selectedComponentContext?.data
-                                                .name || ""
-                                            }
-                                            onChange={(e) =>
-                                              selectedComponentId &&
-                                              updateComponent(
-                                                selectedComponentId,
-                                                { name: e.target.value },
-                                              )
-                                            }
-                                            placeholder="e.g. first_name"
-                                          />
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <input
-                                            type="checkbox"
-                                            id="req-check"
-                                            checked={
-                                              selectedComponentContext?.data
-                                                .required || false
-                                            }
-                                            onChange={(e) =>
-                                              selectedComponentId &&
-                                              updateComponent(
-                                                selectedComponentId,
-                                                { required: e.target.checked },
-                                              )
-                                            }
-                                          />
-                                          <label
-                                            htmlFor="req-check"
-                                            className="text-xs"
-                                          >
-                                            Required Field
-                                          </label>
-                                        </div>
-                                      </>
-                                    )}
-                                  </div>
-                                )}
+                                      {selectedComponentContext?.type !==
+                                        "Footer" && (
+                                          <>
+                                            <div>
+                                              <label className="text-[10px] uppercase font-bold text-muted-foreground">
+                                                Field Name (ID)
+                                              </label>
+                                              <input
+                                                type="text"
+                                                className="w-full text-xs bg-background border px-2 py-1.5 rounded font-mono"
+                                                value={
+                                                  selectedComponentContext?.data
+                                                    .name || ""
+                                                }
+                                                onChange={(e) =>
+                                                  selectedComponentId &&
+                                                  updateComponent(
+                                                    selectedComponentId,
+                                                    { name: e.target.value },
+                                                  )
+                                                }
+                                                placeholder="e.g. first_name"
+                                              />
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                              <input
+                                                type="checkbox"
+                                                id="req-check"
+                                                checked={
+                                                  selectedComponentContext?.data
+                                                    .required || false
+                                                }
+                                                onChange={(e) =>
+                                                  selectedComponentId &&
+                                                  updateComponent(
+                                                    selectedComponentId,
+                                                    { required: e.target.checked },
+                                                  )
+                                                }
+                                              />
+                                              <label
+                                                htmlFor="req-check"
+                                                className="text-xs"
+                                              >
+                                                Required Field
+                                              </label>
+                                            </div>
+                                          </>
+                                        )}
+                                    </div>
+                                  )}
 
                                 {/* 3. Dropdown/Radio Options */}
                                 {(selectedComponentContext?.type ===
                                   "Dropdown" ||
                                   selectedComponentContext?.type ===
-                                    "RadioButtons" ||
+                                  "RadioButtons" ||
                                   selectedComponentContext?.type ===
-                                    "CheckboxGroup") && (
-                                  <div>
-                                    <div className="flex items-center justify-between">
-                                      <label className="text-[10px] uppercase font-bold text-muted-foreground">
-                                        Options List
-                                      </label>
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-5 text-[10px] px-2"
-                                        onClick={() => {
-                                          const currentOpts =
-                                            selectedComponentContext.data
-                                              .options || [];
-                                          const newOpt = {
-                                            id: `opt_${Date.now()}`,
-                                            title: "New Option",
-                                          };
-                                          updateComponent(
-                                            selectedComponentContext.id,
-                                            {
-                                              options: [...currentOpts, newOpt],
-                                            },
-                                          );
-                                        }}
-                                      >
-                                        <Plus className="w-3 h-3 mr-1" /> Add
-                                      </Button>
-                                    </div>
-                                    <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
-                                      {(
-                                        selectedComponentContext?.data
-                                          .options || []
-                                      ).map((opt: any, idx: number) => (
-                                        <div
-                                          key={idx}
-                                          className="flex items-center gap-2 group"
+                                  "CheckboxGroup") && (
+                                    <div>
+                                      <div className="flex items-center justify-between">
+                                        <label className="text-[10px] uppercase font-bold text-muted-foreground">
+                                          Options List
+                                        </label>
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-5 text-[10px] px-2"
+                                          onClick={() => {
+                                            const currentOpts =
+                                              selectedComponentContext.data
+                                                .options || [];
+                                            const newOpt = {
+                                              id: `opt_${Date.now()}`,
+                                              title: "New Option",
+                                            };
+                                            updateComponent(
+                                              selectedComponentContext.id,
+                                              {
+                                                options: [...currentOpts, newOpt],
+                                              },
+                                            );
+                                          }}
                                         >
-                                          <div className="grid grid-cols-2 gap-2 flex-1">
-                                            <input
-                                              className="w-full text-xs bg-background border px-2 py-1.5 rounded"
-                                              placeholder="Label"
-                                              value={opt.title}
-                                              onChange={(e) => {
-                                                const newOpts = [
-                                                  ...(selectedComponentContext
-                                                    .data.options || []),
-                                                ];
-                                                newOpts[idx] = {
-                                                  ...newOpts[idx],
-                                                  title: e.target.value,
-                                                };
-                                                updateComponent(
-                                                  selectedComponentContext.id,
-                                                  { options: newOpts },
-                                                );
-                                              }}
-                                            />
-                                            <input
-                                              className="w-full text-xs bg-muted/50 border px-2 py-1.5 rounded font-mono text-muted-foreground"
-                                              placeholder="ID"
-                                              value={opt.id}
-                                              onChange={(e) => {
-                                                const newOpts = [
-                                                  ...(selectedComponentContext
-                                                    .data.options || []),
-                                                ];
-                                                newOpts[idx] = {
-                                                  ...newOpts[idx],
-                                                  id: e.target.value,
-                                                };
-                                                updateComponent(
-                                                  selectedComponentContext.id,
-                                                  { options: newOpts },
-                                                );
-                                              }}
-                                            />
-                                          </div>
-                                          <Button
-                                            variant="ghost"
-                                            size="icon"
-                                            className="h-6 w-6 text-muted-foreground hover:text-red-500"
-                                            onClick={() => {
-                                              const newOpts =
-                                                selectedComponentContext.data.options.filter(
-                                                  (_: any, i: number) =>
-                                                    i !== idx,
-                                                );
-                                              updateComponent(
-                                                selectedComponentContext.id,
-                                                { options: newOpts },
-                                              );
-                                            }}
+                                          <Plus className="w-3 h-3 mr-1" /> Add
+                                        </Button>
+                                      </div>
+                                      <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                                        {(
+                                          selectedComponentContext?.data
+                                            .options || []
+                                        ).map((opt: any, idx: number) => (
+                                          <div
+                                            key={idx}
+                                            className="flex items-center gap-2 group"
                                           >
-                                            <X className="w-3 h-3" />
-                                          </Button>
-                                        </div>
-                                      ))}
-                                      {(!selectedComponentContext?.data
-                                        .options ||
-                                        selectedComponentContext.data.options
-                                          .length === 0) && (
-                                        <div className="text-center py-4 border-2 border-dashed rounded text-[10px] text-muted-foreground">
-                                          No options added.
-                                        </div>
-                                      )}
+                                            <div className="grid grid-cols-2 gap-2 flex-1">
+                                              <input
+                                                className="w-full text-xs bg-background border px-2 py-1.5 rounded"
+                                                placeholder="Label"
+                                                value={opt.title}
+                                                onChange={(e) => {
+                                                  const newOpts = [
+                                                    ...(selectedComponentContext
+                                                      .data.options || []),
+                                                  ];
+                                                  newOpts[idx] = {
+                                                    ...newOpts[idx],
+                                                    title: e.target.value,
+                                                  };
+                                                  updateComponent(
+                                                    selectedComponentContext.id,
+                                                    { options: newOpts },
+                                                  );
+                                                }}
+                                              />
+                                              <input
+                                                className="w-full text-xs bg-muted/50 border px-2 py-1.5 rounded font-mono text-muted-foreground"
+                                                placeholder="ID"
+                                                value={opt.id}
+                                                onChange={(e) => {
+                                                  const newOpts = [
+                                                    ...(selectedComponentContext
+                                                      .data.options || []),
+                                                  ];
+                                                  newOpts[idx] = {
+                                                    ...newOpts[idx],
+                                                    id: e.target.value,
+                                                  };
+                                                  updateComponent(
+                                                    selectedComponentContext.id,
+                                                    { options: newOpts },
+                                                  );
+                                                }}
+                                              />
+                                            </div>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 text-muted-foreground hover:text-red-500"
+                                              onClick={() => {
+                                                const newOpts =
+                                                  selectedComponentContext.data.options.filter(
+                                                    (_: any, i: number) =>
+                                                      i !== idx,
+                                                  );
+                                                updateComponent(
+                                                  selectedComponentContext.id,
+                                                  { options: newOpts },
+                                                );
+                                              }}
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </Button>
+                                          </div>
+                                        ))}
+                                        {(!selectedComponentContext?.data
+                                          .options ||
+                                          selectedComponentContext.data.options
+                                            .length === 0) && (
+                                            <div className="text-center py-4 border-2 border-dashed rounded text-[10px] text-muted-foreground">
+                                              No options added.
+                                            </div>
+                                          )}
+                                      </div>
                                     </div>
-                                  </div>
-                                )}
+                                  )}
 
                                 {/* Footer Navigation */}
                                 <div>
@@ -1573,45 +1545,52 @@ export default function FlowEditorModal({
                                     .actionType === "navigate" ||
                                     selectedComponentContext?.data
                                       .actionType === "data_exchange") && (
-                                    <div>
-                                      <label className="text-[10px] uppercase font-bold text-muted-foreground">
-                                        Target Screen
-                                      </label>
-                                      <select
-                                        className="w-full text-xs bg-background border px-2 py-1.5 rounded"
-                                        value={
-                                          selectedComponentContext?.data
-                                            .nextScreenId || ""
-                                        }
-                                        onChange={(e) =>
-                                          selectedComponentId &&
-                                          updateComponent(selectedComponentId, {
-                                            nextScreenId: e.target.value,
-                                          })
-                                        }
-                                      >
-                                        <option value="" disabled>
-                                          Select Screen...
-                                        </option>
-                                        {screens
-                                          .filter(
-                                            (s) => s.id !== activeScreenId,
-                                          ) // Prevent self-linking loop
-                                          .map((s) => (
-                                            <option key={s.id} value={s.id}>
-                                              {s.title} ({s.id})
-                                            </option>
-                                          ))}
-                                      </select>
-                                      {selectedComponentContext?.data
-                                        .actionType === "data_exchange" && (
-                                        <p className="text-[10px] text-muted-foreground mt-1 text-orange-600">
-                                          Server <b>MUST</b> return this screen
-                                          ID after processing.
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
+                                      <div>
+                                        <label className="text-[10px] uppercase font-bold text-muted-foreground">
+                                          Target Screen
+                                        </label>
+                                        <select
+                                          className="w-full text-xs bg-background border px-2 py-1.5 rounded"
+                                          value={
+                                            selectedComponentContext?.data
+                                              .nextScreenId || ""
+                                          }
+                                          onChange={(e) =>
+                                            selectedComponentId &&
+                                            updateComponent(selectedComponentId, {
+                                              nextScreenId: e.target.value,
+                                            })
+                                          }
+                                        >
+                                          <option value="" disabled>
+                                            Select Screen...
+                                          </option>
+                                          {screens
+                                            .filter(
+                                              (s) => s.id !== activeScreenId,
+                                            ) // Prevent self-linking loop
+                                            .map((s) => (
+                                              <option key={s.id} value={s.id}>
+                                                {s.title} ({s.id})
+                                              </option>
+                                            ))}
+                                        </select>
+                                        {selectedComponentContext?.data
+                                          .actionType === "navigate" &&
+                                          !selectedComponentContext?.data.nextScreenId && (
+                                            <p className="text-[10px] text-red-500 mt-1 font-semibold">
+                                              ⚠️ Please select a target screen to avoid validation errors.
+                                            </p>
+                                          )}
+                                        {selectedComponentContext?.data
+                                          .actionType === "data_exchange" && (
+                                            <p className="text-[10px] text-muted-foreground mt-1 text-orange-600">
+                                              Server <b>MUST</b> return this screen
+                                              ID after processing.
+                                            </p>
+                                          )}
+                                      </div>
+                                    )}
                                 </div>
                               </div>
                             </>

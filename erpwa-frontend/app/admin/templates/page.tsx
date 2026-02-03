@@ -239,7 +239,8 @@ export default function TemplatesPage() {
           text: b.text,
           value: b.value || "",
           flowId: b.flowId,
-          flowAction: b.flowAction
+          flowAction: b.flowAction,
+          navigateScreen: b.navigateScreen || b.value || "" // Include navigateScreen
         }))
       );
     } else {
@@ -287,6 +288,12 @@ export default function TemplatesPage() {
   const updateButton = (index: number, key: string, val: string) => {
     const newButtons = [...buttons];
     (newButtons[index] as any)[key] = val;
+
+    // For Flow buttons, keep navigateScreen in sync with value
+    if ((newButtons[index] as any).type === "FLOW" && key === "value") {
+      (newButtons[index] as any).navigateScreen = val;
+    }
+
     setButtons(newButtons);
   };
 
@@ -338,7 +345,14 @@ export default function TemplatesPage() {
         }
         if (btn.type === "FLOW") {
           if (btn.flowId) data.append(`buttons[${index}][flowId]`, btn.flowId);
-          if (btn.flowAction) data.append(`buttons[${index}][flowAction]`, btn.flowAction);
+          // Ensure flowAction is sent, default to navigate
+          const action = btn.flowAction || "navigate";
+          data.append(`buttons[${index}][flowAction]`, action);
+
+          // Also explicitly send navigateScreen if inferred from value 
+          if (btn.value) {
+            data.append(`buttons[${index}][navigateScreen]`, btn.value);
+          }
         }
       });
 
@@ -1795,7 +1809,45 @@ export default function TemplatesPage() {
                                   <select
                                     className="h-8 text-sm border rounded px-2 w-full bg-background"
                                     value={btn.flowId || ""}
-                                    onChange={(e) => updateButton(idx, "flowId", e.target.value)}
+                                    onChange={(e) => {
+                                      const selectedId = e.target.value;
+                                      const newButtons = [...buttons];
+
+                                      // 1. Update Flow ID
+                                      (newButtons[idx] as any).flowId = selectedId;
+
+                                      // 2. Auto-fetch logic
+                                      const flow = flows.find((f) => f.id === selectedId);
+                                      if (flow) {
+                                        (newButtons[idx] as any).flowAction = "navigate";
+
+                                        // Smart fetch: Try getting actual first screen from JSON
+                                        let startScreen = "START";
+                                        try {
+                                          if ((flow as any).flowJson) {
+                                            const json = typeof (flow as any).flowJson === 'string'
+                                              ? JSON.parse((flow as any).flowJson)
+                                              : (flow as any).flowJson;
+
+                                            if (json.screens && json.screens.length > 0) {
+                                              startScreen = json.screens[0].id;
+                                              console.log(`✅ Auto-fetched first screen from flowJson: ${startScreen}`);
+                                            }
+                                          } else if ((flow as any).preview?.first_screen) {
+                                            startScreen = (flow as any).preview.first_screen;
+                                            console.log(`✅ Auto-fetched first screen from preview: ${startScreen}`);
+                                          }
+                                        } catch (e) {
+                                          console.warn("Could not auto-fetch screen ID", e);
+                                        }
+
+                                        console.log(`🔧 Setting Flow button screen ID to: ${startScreen}`);
+                                        (newButtons[idx] as any).value = startScreen;
+                                        (newButtons[idx] as any).navigateScreen = startScreen;
+                                      }
+
+                                      setButtons(newButtons);
+                                    }}
                                   >
                                     <option value="">Select Flow</option>
                                     {flows.map((f) => (
