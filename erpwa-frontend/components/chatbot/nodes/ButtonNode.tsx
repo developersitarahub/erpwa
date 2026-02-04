@@ -128,7 +128,7 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
           </div>
         </div>
 
-        <div className="p-3 bg-white dark:bg-slate-800 space-y-3">
+        <div className="p-3 space-y-3">
           {isEditing ? (
             <div className="space-y-3 nodrag">
               <input
