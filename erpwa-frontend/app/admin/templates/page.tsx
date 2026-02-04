@@ -34,13 +34,17 @@ import {
   Eye,
   ShoppingBag,
   Workflow,
+  LayoutGrid,
+  BookTemplate,
 } from "lucide-react";
 import api from "@/lib/api";
 import { toast } from "react-toastify";
 import { cn } from "@/lib/utils";
 import { leadsAPI } from "@/lib/leadsApi";
 import { Lead } from "@/lib/types";
+import { OFFICIAL_TEMPLATES } from "@/lib/officialTemplates";
 import CatalogTemplateModal from "@/components/templates/CatalogTemplateModal";
+import { processMedia } from "@/lib/mediaProcessor";
 
 const formatError = (error: any, defaultMsg: string) => {
   const errorData = error.response?.data;
@@ -87,6 +91,8 @@ type Template = {
     language: string;
   }[];
   createdByName?: string;
+  isMetaOnly?: boolean;
+  originalName?: string;
 };
 
 export default function TemplatesPage() {
@@ -96,14 +102,20 @@ export default function TemplatesPage() {
   const [syncing, setSyncing] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState<string | null>(null);
+  const [importing, setImporting] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"local" | "library">("local");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
+  const [librarySearch, setLibrarySearch] = useState("");
+  const [libraryCategory, setLibraryCategory] = useState("ALL");
 
   // --- Delete Modal State ---
   const [deleteConf, setDeleteConf] = useState<{
     isOpen: boolean;
     id?: string;
     title?: string;
+    isMeta?: boolean;
+    metaName?: string;
   }>({ isOpen: false });
 
   // --- Create/Edit Modal State ---
@@ -165,20 +177,101 @@ export default function TemplatesPage() {
   }, [showSendModal]);
 
   // Fetch Templates
-  const fetchTemplates = async () => {
+  const fetchTemplates = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
-      const res = await api.get("/vendor/templates");
-      setTemplates(res.data);
+      const [localRes, metaRes, flowsRes] = await Promise.all([
+        api.get("/vendor/templates"),
+        api.get("/vendor/templates/meta").catch(() => ({ data: [] })),
+        api.get("/whatsapp/flows").catch(() => ({ data: { flows: [] } }))
+      ]);
 
-      // Fetch flows for selection
-      api.get("/whatsapp/flows").then((res) => {
-        setFlows(res.data.flows || []);
-      }).catch(console.error);
+      if (flowsRes.data?.flows) {
+        setFlows(flowsRes.data.flows);
+      }
 
+      const localTemplates = localRes.data;
+      const metaRaw = metaRes.data || [];
+
+      // Parse Meta templates
+      const parsedMeta = metaRaw
+        .map((m: any) => parseMetaTemplate(m))
+        .filter((t: any) => t !== null);
+
+      // Filter out Meta templates that already exist locally
+      const localNames = new Set(localTemplates.map((l: any) => l.metaTemplateName));
+
+      const uniqueMetaTemplates = parsedMeta.filter(
+        (m: any) => !localNames.has(m.originalName)
+      );
+
+      const merged = [...localTemplates, ...uniqueMetaTemplates];
+      setTemplates(merged);
     } catch (error) {
       console.error("Failed to fetch templates", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const parseMetaTemplate = (metaTpl: any) => {
+    try {
+      const components = metaTpl.components || [];
+      const bodyComp = components.find((c: any) => c.type === "BODY");
+      const headerComp = components.find((c: any) => c.type === "HEADER");
+      const buttonsComp = components.find((c: any) => c.type === "BUTTONS");
+
+      // If no body, skip
+      if (!bodyComp || !bodyComp.text) return null;
+
+      const buttons = buttonsComp?.buttons?.map((b: any) => ({
+        type: b.type,
+        text: b.text,
+        url: b.url,
+        phone_number: b.phone_number,
+        value: b.url || b.phone_number || ""
+      })) || [];
+
+      const headerType = headerComp?.format || "TEXT";
+
+      // Extract header media URL from Meta's example field for preview
+      let headerMediaUrl: string | null = null;
+      if (headerComp && headerType !== "TEXT" && headerComp.example) {
+        const urlArray = headerComp.example.header_url || headerComp.example.header_handle;
+        if (Array.isArray(urlArray) && urlArray.length > 0) {
+          headerMediaUrl = urlArray[0];
+        }
+      }
+
+      const media = headerMediaUrl ? [{
+        id: `meta-media-${metaTpl.id}`,
+        mediaType: headerType.toLowerCase(),
+        s3Url: headerMediaUrl,
+        language: metaTpl.language
+      }] : [];
+
+      return {
+        isMetaOnly: true,
+        id: metaTpl.id,
+        displayName: metaTpl.name.replace(/_/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()),
+        metaTemplateName: metaTpl.name,
+        category: metaTpl.category,
+        status: metaTpl.status.toLowerCase(),
+        languages: [{
+          language: metaTpl.language,
+          body: bodyComp.text,
+          headerType: headerType,
+          headerText: headerType === "TEXT" ? headerComp?.text : null,
+          footerText: components.find((c: any) => c.type === "FOOTER")?.text || null
+        }],
+        buttons: buttons,
+        media: media,
+        createdAt: new Date().toISOString(),
+        originalName: metaTpl.name
+      };
+    } catch (e) {
+      console.error("Error parsing meta template:", e);
+      return null;
     }
   };
 
@@ -334,7 +427,14 @@ export default function TemplatesPage() {
       }
 
       if (formData.headerType !== "TEXT" && headerFile) {
-        data.append("header.file", headerFile);
+        try {
+          const { file } = await processMedia(headerFile);
+          data.append("header.file", file);
+        } catch (err: any) {
+          toast.error(err.message || "Media validation failed");
+          setIsCreating(false);
+          return;
+        }
       }
 
       buttons.forEach((btn, index) => {
@@ -372,13 +472,13 @@ export default function TemplatesPage() {
               : t
           )
         );
-        fetchTemplates();
+        fetchTemplates(true);
       } else {
         await api.post("/vendor/templates", data, {
           headers: { "Content-Type": "multipart/form-data" },
         });
         toast.success("Template created successfully!");
-        fetchTemplates();
+        fetchTemplates(true);
       }
 
       setShowCreateModal(false);
@@ -403,7 +503,7 @@ export default function TemplatesPage() {
         toast.success("Catalog template created successfully!");
       }
 
-      fetchTemplates();
+      fetchTemplates(true);
       setShowCatalogModal(false);
       setSelectedTemplate(null);
     } catch (error: any) {
@@ -411,6 +511,35 @@ export default function TemplatesPage() {
     } finally {
       setIsCreating(false);
     }
+  };
+
+  const handleUseTemplate = (template: any) => {
+    resetForm();
+    setFormData({
+      displayName: template.title || template.displayName,
+      category: template.category,
+      language: "en_US",
+      headerType: template.headerType || "TEXT",
+      body: template.body,
+      footerText: template.footerText || "",
+      headerText: template.headerText || "",
+    });
+
+    if (template.buttons) {
+      setButtons(
+        template.buttons.map((b: any) => ({
+          type: b.type,
+          text: b.text,
+          value: b.value || "",
+          flowId: b.flowId,
+          flowAction: b.flowAction,
+        })),
+      );
+    } else {
+      setButtons([]);
+    }
+
+    setShowCreateModal(true);
   };
 
   // --- List Item Handlers ---
@@ -426,7 +555,8 @@ export default function TemplatesPage() {
     try {
       await api.post(`/vendor/templates/${template.id}/submit`);
       toast.success("Template submitted to Meta successfully!");
-      fetchTemplates();
+      setTemplates(prev => prev.map(t => t.id === template.id ? { ...t, status: 'pending' } : t));
+      fetchTemplates(true); // Silent update to ensure full sync
     } catch (error: any) {
       toast.error(formatError(error, "Failed to submit template"));
     } finally {
@@ -440,7 +570,10 @@ export default function TemplatesPage() {
     try {
       const res = await api.post(`/vendor/templates/${id}/sync-status`);
       toast.success(res.data.message || "Status synced successfully");
-      fetchTemplates();
+      if (res.data.status) {
+        setTemplates(prev => prev.map(t => t.id === id ? { ...t, status: res.data.status } : t));
+      }
+      fetchTemplates(true); // Silent update for full consistency
     } catch (error: any) {
       toast.error(formatError(error, "Failed to sync status"));
     } finally {
@@ -458,19 +591,92 @@ export default function TemplatesPage() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteConf.id) return;
+    if (!deleteConf.id && !deleteConf.metaName) return;
 
-    const id = deleteConf.id;
-    setDeleting(id);
+    // Handle Meta Delete
+    if (deleteConf.isMeta && deleteConf.metaName) {
+      setDeleting(deleteConf.metaName);
+      try {
+        await api.delete(`/vendor/templates/meta?name=${encodeURIComponent(deleteConf.metaName)}`);
+        toast.success("Template deleted from Meta");
+        fetchTemplates(true); // Refresh list to remove it
+      } catch (error: any) {
+        toast.error(formatError(error, "Failed to delete from Meta"));
+      } finally {
+        setDeleting(null);
+        setDeleteConf({ isOpen: false });
+      }
+      return;
+    }
+
+    // Handle Local Delete
+    if (deleteConf.id) {
+      const id = deleteConf.id;
+      setDeleting(id);
+      try {
+        await api.delete(`/vendor/templates/${id}`);
+        toast.success("Template deleted successfully");
+        setTemplates((prev) => prev.filter((t) => t.id !== id));
+      } catch (error: any) {
+        toast.error(formatError(error, "Failed to delete template"));
+      } finally {
+        setDeleting(null);
+        setDeleteConf({ isOpen: false });
+      }
+    }
+  };
+
+  const handleMetaDelete = (metaName: string, displayName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteConf({
+      isOpen: true,
+      title: displayName || metaName,
+      isMeta: true,
+      metaName: metaName,
+    });
+  };
+
+  const handleMetaSend = async (metaTpl: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setImporting(metaTpl.id || metaTpl.metaTemplateName);
     try {
-      await api.delete(`/vendor/templates/${id}`);
-      toast.success("Template deleted successfully");
-      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      // Import first (it returns the full template object)
+      const headerMediaUrl = metaTpl.media?.[0]?.s3Url || null;
+      const res = await api.post("/vendor/templates/import", {
+        metaTemplateName: metaTpl.metaTemplateName,
+        displayName: metaTpl.displayName,
+        category: metaTpl.category,
+        language: metaTpl.languages[0].language,
+        body: metaTpl.languages[0].body,
+        headerType: metaTpl.languages[0].headerType,
+        headerText: metaTpl.languages[0].headerText,
+        footerText: metaTpl.languages[0].footerText,
+        buttons: metaTpl.buttons,
+        metaId: metaTpl.id,
+        status: metaTpl.status,
+        headerMediaUrl: headerMediaUrl
+      });
+
+      const newTemplate = res.data;
+
+      // Merge media from the parsed Meta template
+      const templateWithMedia = {
+        ...newTemplate,
+        media: newTemplate.media?.length > 0 ? newTemplate.media : metaTpl.media
+      };
+
+      // Update local list with the new template
+      setTemplates((prev) => {
+        return prev.map(p => (p.metaTemplateName === newTemplate.metaTemplateName) ? templateWithMedia : p);
+      });
+
+      // Open send modal directly with media included
+      openSendModal(templateWithMedia);
+
     } catch (error: any) {
-      toast.error(formatError(error, "Failed to delete template"));
+      toast.error(formatError(error, "Failed to prepare template for sending"));
     } finally {
-      setDeleting(null);
-      setDeleteConf({ isOpen: false });
+      setImporting(null);
     }
   };
 
@@ -634,6 +840,13 @@ export default function TemplatesPage() {
     return matchesSearch && matchesCategory;
   });
 
+  const filteredLibrary = OFFICIAL_TEMPLATES.filter((t) => {
+    const matchesSearch = t.title.toLowerCase().includes(librarySearch.toLowerCase()) ||
+      t.body.toLowerCase().includes(librarySearch.toLowerCase());
+    const matchesCategory = libraryCategory === "ALL" || t.category === libraryCategory;
+    return matchesSearch && matchesCategory;
+  });
+
   return (
     <div className="flex-1 overflow-auto p-4 md:p-8 space-y-8 bg-gradient-to-br from-background via-background/95 to-muted/20 min-h-screen">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -666,38 +879,49 @@ export default function TemplatesPage() {
           </div>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-card/10 p-4 rounded-xl border border-border/40">
-          <div className="relative group w-full sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors" />
-            <Input
-              placeholder="Search templates..."
-              className="pl-9 h-10 bg-background/50 border-border/40"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide max-w-full pb-2">
-            {[
-              { value: "ALL", label: "All Categories" },
-              { value: "MARKETING", label: "Marketing" },
-              { value: "UTILITY", label: "Utility" },
-              { value: "AUTHENTICATION", label: "Authentication" }
-            ].map((cat) => (
-              <button
-                key={cat.value}
-                onClick={() => setCategoryFilter(cat.value)}
-                className={cn(
-                  "text-xs font-medium transition-all whitespace-nowrap pb-1 border-b-2",
-                  categoryFilter === cat.value
-                    ? "border-primary text-primary"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
+
+
+        {/* Tabs with Icons */}
+        <div className="flex border-b border-border/40 space-x-8">
+          <button
+            onClick={() => setActiveTab("local")}
+            className={cn(
+              "pb-4 text-sm font-medium transition-all relative flex items-center gap-2",
+              activeTab === "local"
+                ? "text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <LayoutGrid className="w-4 h-4" />
+            My Templates
+            {activeTab === "local" && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
+              />
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("library")}
+            className={cn(
+              "pb-4 text-sm font-medium transition-all relative flex items-center gap-2",
+              activeTab === "library"
+                ? "text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <BookTemplate className="w-4 h-4" />
+            Template Library
+            {activeTab === "library" && (
+              <motion.div
+                layoutId="activeTab"
+                className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary"
+              />
+            )}
+          </button>
         </div>
+
+
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4 opacity-50">
@@ -711,206 +935,345 @@ export default function TemplatesPage() {
               Loading templates...
             </p>
           </div>
-        ) : filteredTemplates.length === 0 ? (
-          templates.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 border border-dashed border-border/60 rounded-2xl bg-muted/5 gap-4">
-              <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-2">
-                <FileText className="w-8 h-8 text-muted-foreground/50" />
+        ) : activeTab === "local" ? (
+          /* MY TEMPLATES VIEW (Includes both Local and Meta-synced) */
+          <>
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-card/10 p-4 rounded-xl border border-border/40">
+              <div className="relative group w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors" />
+                <Input
+                  placeholder="Search templates..."
+                  className="pl-9 h-10 bg-background/50 border-border/40"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
-              <h3 className="text-lg font-semibold">No templates yet</h3>
-              <p className="text-muted-foreground text-center max-w-sm text-sm">
-                Get started by creating your first WhatsApp template approval.
-              </p>
-              <Button
-                variant="link"
-                onClick={openCreateModal}
-                className="text-primary mt-2"
-              >
-                Create Template &rarr;
-              </Button>
+              <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide max-w-full pb-2">
+                {[
+                  { value: "ALL", label: "All Categories" },
+                  { value: "MARKETING", label: "Marketing" },
+                  { value: "UTILITY", label: "Utility" },
+                  { value: "AUTHENTICATION", label: "Authentication" }
+                ].map((cat) => (
+                  <button
+                    key={cat.value}
+                    onClick={() => setCategoryFilter(cat.value)}
+                    className={cn(
+                      "text-xs font-medium transition-all whitespace-nowrap pb-1 border-b-2",
+                      categoryFilter === cat.value
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <p className="text-muted-foreground">No templates match your search.</p>
-              <Button
-                variant="link"
-                onClick={() => {
-                  setSearch("");
-                  setCategoryFilter("ALL");
-                }}
-                className="text-primary mt-2"
-              >
-                Clear Filters
-              </Button>
-            </div>
-          )
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredTemplates.map((t) => (
-              <motion.div
-                key={t.id}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                className="group h-full"
-              >
-                <Card
-                  onClick={() => handleCardClick(t)}
-                  className={cn(
-                    "h-full flex flex-col cursor-pointer border-border/50 bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 overflow-hidden group-hover:border-primary/20",
-                    t.status === "approved" && "hover:border-green-500/30"
-                  )}
-                >
-                  {/* Card Header area */}
-                  <div className="p-5 flex flex-col gap-3 border-b border-border/40 bg-gradient-to-b from-muted/30 to-transparent">
-                    <div className="flex justify-between items-start gap-3">
-                      <div className="min-w-0 flex-1">
-                        <h3
-                          className="font-semibold text-base text-foreground truncate"
-                          title={t.displayName}
-                        >
-                          {t.displayName}
-                        </h3>
-                      </div>
-                      <div className="shrink-0">{getStatusBadge(t.status)}</div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground shrink-0 uppercase"
-                      >
-                        {t.templateType || 'STANDARD'}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground shrink-0"
-                      >
-                        {t.category}
-                      </Badge>
-                      <span className="text-[10px] text-muted-foreground/60">
-                        •
-                      </span>
-                      <span className="text-[10px] text-muted-foreground/60">
-                        {t.languages[0]?.language}
-                      </span>
-                    </div>
+
+            {filteredTemplates.length === 0 ? (
+              templates.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-24 border border-dashed border-border/60 rounded-2xl bg-muted/5 gap-4">
+                  <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mb-2">
+                    <FileText className="w-8 h-8 text-muted-foreground/50" />
                   </div>
-
-                  {/* Card Body - Message Preview style */}
-                  <CardContent className="p-0 flex-1 flex flex-col relative bg-muted/5">
-                    <div className="p-5 flex-1 relative overflow-hidden">
-                      {/* Subtle background pattern for whatsapp feel */}
-                      <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px]"></div>
-
-                      <div className="bg-white dark:bg-muted rounded-tr-xl rounded-bl-xl rounded-br-xl rounded-tl-none p-3 shadow-sm border border-border/20 text-xs text-foreground/80 leading-relaxed font-sans relative z-10 max-w-[90%] before:content-[''] before:absolute before:top-0 before:-left-1.5 before:w-3 before:h-3 before:bg-white dark:before:bg-muted before:[clip-path:polygon(100%_0,0_0,100%_100%)]">
-                        {t.languages[0]?.headerType !== "TEXT" && (
-                          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-dashed border-border/40 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-                            {t.languages[0]?.headerType === "IMAGE" ? (
-                              <ImageIcon className="w-3 h-3" />
-                            ) : (
-                              <Paperclip className="w-3 h-3" />
-                            )}
-                            {t.languages[0]?.headerType}
+                  <h3 className="text-lg font-semibold">No templates yet</h3>
+                  <p className="text-muted-foreground text-center max-w-sm text-sm">
+                    Get started by creating your first WhatsApp template approval.
+                  </p>
+                  <Button
+                    variant="link"
+                    onClick={openCreateModal}
+                    className="text-primary mt-2"
+                  >
+                    Create Template &rarr;
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                  <p className="text-muted-foreground">No templates match your search.</p>
+                  <Button
+                    variant="link"
+                    onClick={() => {
+                      setSearch("");
+                      setCategoryFilter("ALL");
+                    }}
+                    className="text-primary mt-2"
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              )
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredTemplates.map((t) => (
+                  <motion.div
+                    key={t.id}
+                    initial={{ opacity: 0, scale: 0.98 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                    className="group h-full"
+                  >
+                    <Card
+                      onClick={() => handleCardClick(t)}
+                      className={cn(
+                        "h-full flex flex-col cursor-pointer border-border/50 bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 overflow-hidden group-hover:border-primary/20",
+                        t.status === "approved" && "hover:border-green-500/30"
+                      )}
+                    >
+                      {/* Card Header area */}
+                      <div className="p-5 flex flex-col gap-3 border-b border-border/40 bg-gradient-to-b from-muted/30 to-transparent">
+                        <div className="flex justify-between items-start gap-3">
+                          <div className="min-w-0 flex-1">
+                            <h3
+                              className="font-semibold text-base text-foreground truncate"
+                              title={t.displayName}
+                            >
+                              {t.displayName}
+                            </h3>
                           </div>
-                        )}
-                        <p className="line-clamp-4 whitespace-pre-wrap">
-                          {t.languages[0]?.body || "No content"}
-                        </p>
-
-                        {/* Show button types (Quick Reply / URL / Phone) inline below the body */}
-                        {t.buttons && t.buttons.length > 0 && (
-                          <div className="mt-2 flex items-center gap-2">
-                            {t.buttons.map((b, i) => (
-                              <Badge
-                                key={i}
-                                variant="outline"
-                                className="text-[10px] px-2 py-0.5 h-6"
-                              >
-                                {b.type === "QUICK_REPLY"
-                                  ? "Quick Reply"
-                                  : b.type === "URL"
-                                    ? "URL"
-                                    : b.type === "PHONE_NUMBER"
-                                      ? "Phone"
-                                      : b.type}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-
-                        <div className="flex justify-between items-center mt-2.5 pt-2 border-t border-dashed border-border/40">
-                          {t.createdByName && (
-                            <span className="text-[9px] text-muted-foreground font-medium">
-                              By {t.createdByName}
-                            </span>
-                          )}
-                          <span className="text-[9px] text-muted-foreground font-medium">
-                            {formatTime(t.createdAt)}
+                          <div className="shrink-0">{t.isMetaOnly ? (
+                            <Badge variant="outline" className="border-blue-200 bg-blue-50 text-blue-700 text-[10px]">
+                              Meta
+                            </Badge>
+                          ) : getStatusBadge(t.status)}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground shrink-0 uppercase"
+                          >
+                            {t.templateType || 'STANDARD'}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground shrink-0"
+                          >
+                            {t.category}
+                          </Badge>
+                          <span className="text-[10px] text-muted-foreground/60">
+                            •
+                          </span>
+                          <span className="text-[10px] text-muted-foreground/60">
+                            {t.languages[0]?.language}
                           </span>
                         </div>
                       </div>
+
+                      {/* Card Body - Message Preview style */}
+                      <CardContent className="p-0 flex-1 flex flex-col relative bg-muted/5">
+                        <div className="p-5 flex-1 relative overflow-hidden">
+                          {/* Subtle background pattern for whatsapp feel */}
+                          <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px]"></div>
+
+                          <div className="bg-white dark:bg-muted rounded-tr-xl rounded-bl-xl rounded-br-xl rounded-tl-none p-3 shadow-sm border border-border/20 text-xs text-foreground/80 leading-relaxed font-sans relative z-10 max-w-[90%] before:content-[''] before:absolute before:top-0 before:-left-1.5 before:w-3 before:h-3 before:bg-white dark:before:bg-muted before:[clip-path:polygon(100%_0,0_0,100%_100%)]">
+                            {t.languages[0]?.headerType !== "TEXT" && (
+                              <div className="flex items-center gap-2 mb-2 pb-2 border-b border-dashed border-border/40 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                                {t.languages[0]?.headerType === "IMAGE" ? (
+                                  <ImageIcon className="w-3 h-3" />
+                                ) : (
+                                  <Paperclip className="w-3 h-3" />
+                                )}
+                                {t.languages[0]?.headerType}
+                              </div>
+                            )}
+                            <p className="line-clamp-4 whitespace-pre-wrap">
+                              {t.languages[0]?.body || "No content"}
+                            </p>
+
+                            {/* Show button types (Quick Reply / URL / Phone) inline below the body */}
+                            {t.buttons && t.buttons.length > 0 && (
+                              <div className="mt-2 flex items-center gap-2">
+                                {t.buttons.map((b, i) => (
+                                  <Badge
+                                    key={i}
+                                    variant="outline"
+                                    className="text-[10px] px-2 py-0.5 h-6"
+                                  >
+                                    {b.type === "QUICK_REPLY"
+                                      ? "Quick Reply"
+                                      : b.type === "URL"
+                                        ? "URL"
+                                        : b.type === "PHONE_NUMBER"
+                                          ? "Phone"
+                                          : b.type}
+                                  </Badge>
+                                ))}
+                              </div>
+                            )}
+
+                            <div className="flex justify-between items-center mt-2.5 pt-2 border-t border-dashed border-border/40">
+                              {t.createdByName && (
+                                <span className="text-[9px] text-muted-foreground font-medium">
+                                  By {t.createdByName}
+                                </span>
+                              )}
+                              <span className="text-[9px] text-muted-foreground font-medium">
+                                {formatTime(t.createdAt)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Actions Footer */}
+                        <div className="p-3 bg-card border-t border-border/40 flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              "flex-1 h-8 text-xs font-bold transition-all",
+                              t.status === "draft"
+                                ? "text-blue-600 bg-blue-500/5 hover:bg-blue-500/10"
+                                : t.status === "approved"
+                                  ? "text-green-600 bg-green-500/5 hover:bg-green-500/10"
+                                  : "text-muted-foreground bg-muted/30 hover:bg-muted/50"
+                            )}
+                            onClick={(e) => {
+                              if (t.status === "approved") {
+                                e.stopPropagation();
+                                openSendModal(t);
+                              } else if (t.status === "draft") {
+                                handleSubmitToMeta(t, e);
+                              } else {
+                                handleSyncStatus(t.id, e);
+                              }
+                            }}
+                            disabled={!!syncing || !!submitting}
+                          >
+                            {syncing === t.id || submitting === t.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />
+                            ) : t.status === "draft" ? (
+                              <Upload className="w-3 h-3 mr-1.5" />
+                            ) : t.status === "approved" ? (
+                              <Send className="w-3 h-3 mr-1.5" />
+                            ) : (
+                              <RefreshCw className="w-3 h-3 mr-1.5" />
+                            )}
+                            {t.status === "draft"
+                              ? "Submit"
+                              : t.status === "approved"
+                                ? "Send"
+                                : "Sync"}
+                          </Button>
+                          <div className="w-px h-4 bg-border/60"></div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1 h-8 text-xs font-bold text-red-500/80 bg-red-500/5 hover:text-red-600 hover:bg-red-500/10 transition-all font-bold"
+                            onClick={(e) => handleDelete(t, e)}
+                            disabled={!!deleting}
+                          >
+                            {deleting === t.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />
+                            ) : (
+                              <Trash2 className="w-3 h-3 mr-1.5" />
+                            )}
+                            Delete
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </div>
+            )}
+          </>
+        ) : (
+          /* TEMPLATE LIBRARY VIEW (Official Templates) */
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-card/10 p-4 rounded-xl border border-border/40">
+              <div className="relative group w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground transition-colors" />
+                <Input
+                  placeholder="Search library..."
+                  className="pl-9 h-10 bg-background/50 border-border/40"
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-6 overflow-x-auto scrollbar-hide max-w-full pb-2">
+                {[
+                  { value: "ALL", label: "All Categories" },
+                  { value: "MARKETING", label: "Marketing" },
+                  { value: "UTILITY", label: "Utility" },
+                  { value: "AUTHENTICATION", label: "Authentication" }
+                ].map((cat) => (
+                  <button
+                    key={cat.value}
+                    onClick={() => setLibraryCategory(cat.value)}
+                    className={cn(
+                      "text-xs font-medium transition-all whitespace-nowrap pb-1 border-b-2",
+                      libraryCategory === cat.value
+                        ? "border-primary text-primary"
+                        : "border-transparent text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredLibrary.map((t) => (
+                <motion.div
+                  key={t.id}
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                  className="group h-full"
+                >
+                  <Card className="h-full flex flex-col border-border/50 bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 overflow-hidden">
+                    <div className="p-5 flex flex-col gap-3 border-b border-border/40 bg-gradient-to-b from-muted/30 to-transparent">
+                      <div className="flex justify-between items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-base text-foreground truncate" title={t.title}>
+                            {t.title}
+                          </h3>
+                        </div>
+                        <Badge variant="outline" className="text-[10px] h-5 border-primary/20 bg-primary/5 text-primary">
+                          LIB
+                        </Badge>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-normal px-1.5 py-0 h-5 border-border/50 text-muted-foreground w-fit">
+                        {t.category}
+                      </Badge>
                     </div>
 
-                    {/* Actions Footer */}
-                    <div className="p-3 bg-card border-t border-border/40 flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "flex-1 h-8 text-xs font-bold transition-all",
-                          t.status === "draft"
-                            ? "text-blue-600 bg-blue-500/5 hover:bg-blue-500/10"
-                            : t.status === "approved"
-                              ? "text-green-600 bg-green-500/5 hover:bg-green-500/10"
-                              : "text-muted-foreground bg-muted/30 hover:bg-muted/50"
-                        )}
-                        onClick={(e) => {
-                          if (t.status === "approved") {
-                            e.stopPropagation();
-                            openSendModal(t);
-                          } else if (t.status === "draft") {
-                            handleSubmitToMeta(t, e);
-                          } else {
-                            handleSyncStatus(t.id, e);
-                          }
-                        }}
-                        disabled={!!syncing || !!submitting}
-                      >
-                        {syncing === t.id || submitting === t.id ? (
-                          <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />
-                        ) : t.status === "draft" ? (
-                          <Upload className="w-3 h-3 mr-1.5" />
-                        ) : t.status === "approved" ? (
-                          <Send className="w-3 h-3 mr-1.5" />
-                        ) : (
-                          <RefreshCw className="w-3 h-3 mr-1.5" />
-                        )}
-                        {t.status === "draft"
-                          ? "Submit"
-                          : t.status === "approved"
-                            ? "Send"
-                            : "Sync"}
-                      </Button>
-                      <div className="w-px h-4 bg-border/60"></div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="flex-1 h-8 text-xs font-bold text-red-500/80 bg-red-500/5 hover:text-red-600 hover:bg-red-500/10 transition-all font-bold"
-                        onClick={(e) => handleDelete(t, e)}
-                        disabled={!!deleting}
-                      >
-                        {deleting === t.id ? (
-                          <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />
-                        ) : (
-                          <Trash2 className="w-3 h-3 mr-1.5" />
-                        )}
-                        Delete
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
+                    <CardContent className="p-0 flex-1 flex flex-col relative bg-muted/5">
+                      <div className="p-5 flex-1 relative overflow-hidden">
+                        <div className="bg-white dark:bg-muted rounded-tr-xl rounded-bl-xl rounded-br-xl rounded-tl-none p-3 shadow-sm border border-border/20 text-xs text-foreground/80 leading-relaxed font-sans relative z-10 max-w-[90%] before:content-[''] before:absolute before:top-0 before:-left-1.5 before:w-3 before:h-3 before:bg-white dark:before:bg-muted before:[clip-path:polygon(100%_0,0_0,100%_100%)]">
+                          {t.headerType !== "TEXT" && (
+                            <div className="flex items-center gap-2 mb-2 pb-2 border-b border-dashed border-border/40 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                              <FileText className="w-3 h-3" />
+                              {t.headerType}
+                            </div>
+                          )}
+                          <p className="line-clamp-4 whitespace-pre-wrap">
+                            {t.body}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-4 pt-0">
+                        <Button
+                          className="w-full bg-primary hover:bg-primary/90 text-primary-foreground gap-2 h-9 text-xs font-bold"
+                          onClick={() => handleUseTemplate(t)}
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Use Template
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+
+              {filteredLibrary.length === 0 && (
+                <div className="col-span-full py-24 text-center">
+                  <p className="text-muted-foreground">No templates found in library.</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1903,10 +2266,14 @@ export default function TemplatesPage() {
                   <div className="absolute inset-0 pattern-dots opacity-10 pointer-events-none"></div>
 
                   {/* Mobile Frame Container - Elegantly elongated and responsive */}
-                  <div className="relative mx-auto w-full max-w-[280px] border-[10px] border-[#1F2937] rounded-[48px] shadow-2xl bg-[#0b141a] transition-all duration-500 overflow-hidden transform lg:scale-[1.02] 2xl:scale-105">
-                    <div className="h-6 bg-[#0b141a] flex justify-between items-center px-6 pt-3 z-20 relative">
-                      <span className="text-[10px] text-white font-semibold">9:41</span>
-                      <div className="flex gap-1.5 opacity-50 italic font-bold text-[10px] text-white">WhatsApp</div>
+                  <div className="relative mx-auto w-full max-w-[280px] border-[10px] border-border rounded-[48px] shadow-2xl bg-card transition-all duration-500 overflow-hidden transform lg:scale-[1.02] 2xl:scale-105">
+                    <div className="h-6 bg-card flex justify-between items-center px-6 pt-3 z-20 relative">
+                      <span className="text-[10px] text-muted-foreground font-semibold">
+                        9:41
+                      </span>
+                      <div className="flex gap-1.5 opacity-50 italic font-bold text-[10px] text-muted-foreground">
+                        WhatsApp
+                      </div>
                     </div>
 
                     <div className="relative bg-muted/30 p-3 pt-4 min-h-[500px] max-h-[550px] overflow-y-auto custom-scrollbar flex flex-col">
@@ -1918,7 +2285,7 @@ export default function TemplatesPage() {
                             {/* Header Media */}
                             {(formData.headerType === "IMAGE" ||
                               formData.headerType === "VIDEO") && (
-                                <div className="rounded-xl overflow-hidden bg-black/40 min-h-[140px] relative group flex items-center justify-center">
+                                <div className="rounded-xl overflow-hidden bg-muted min-h-[140px] relative group flex items-center justify-center">
                                   {headerPreview ? (
                                     formData.headerType === "VIDEO" ? (
                                       <video
@@ -1933,7 +2300,7 @@ export default function TemplatesPage() {
                                       />
                                     )
                                   ) : (
-                                    <div className="flex flex-col items-center gap-1 opacity-20">
+                                    <div className="flex flex-col items-center gap-1 opacity-20 text-muted-foreground">
                                       {formData.headerType === "IMAGE" ? (
                                         <ImageIcon className="w-6 h-6" />
                                       ) : (
@@ -1948,11 +2315,12 @@ export default function TemplatesPage() {
                               )}
 
                             {/* Header Text */}
-                            {formData.headerType === "TEXT" && formData.headerText && (
-                              <p className="font-bold text-[14px] pt-2 px-3 text-[#e9edef] leading-tight">
-                                {formData.headerText}
-                              </p>
-                            )}
+                            {formData.headerType === "TEXT" &&
+                              formData.headerText && (
+                                <p className="font-bold text-[14px] pt-2 px-3 text-foreground leading-tight">
+                                  {formData.headerText}
+                                </p>
+                              )}
                           </div>
 
                           <div className="px-3 pt-1 pb-3 text-[13px] leading-snug text-foreground/80 whitespace-pre-wrap font-sans">
@@ -1969,7 +2337,10 @@ export default function TemplatesPage() {
                           {buttons.length > 0 && (
                             <div className="border-t border-border flex flex-col divide-y divide-border bg-muted/30">
                               {buttons.map((btn, idx) => (
-                                <div key={idx} className="p-2.5 text-center text-[13px] font-medium text-[#00a884] flex items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer">
+                                <div
+                                  key={idx}
+                                  className="p-2.5 text-center text-[13px] font-medium text-primary flex items-center justify-center gap-2 hover:bg-muted/50 transition-colors cursor-pointer"
+                                >
                                   {btn.type === "URL" ? (
                                     <Globe className="w-3.5 h-3.5" />
                                   ) : btn.type === "PHONE_NUMBER" ? (
@@ -1985,7 +2356,9 @@ export default function TemplatesPage() {
                         </div>
 
                         <div className="self-end mr-1 mt-0.5 flex items-center gap-1 opacity-40">
-                          <span className="text-[10px] text-white font-bold uppercase tracking-tighter">9:41 AM</span>
+                          <span className="text-[10px] text-muted-foreground font-bold uppercase tracking-tighter">
+                            9:41 AM
+                          </span>
                           <div className="flex -space-x-1">
                             <CheckCircle className="w-2.5 h-2.5 text-muted-foreground" />
                           </div>
@@ -2025,52 +2398,54 @@ export default function TemplatesPage() {
       </AnimatePresence>
 
       {/* Confirmation Modal */}
-      {deleteConf.isOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 backdrop-blur-[2px]">
-          <Card className="w-full max-w-md bg-card border-border shadow-2xl">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
-              <div className="flex items-center gap-2 text-destructive">
-                <AlertTriangle className="w-5 h-5" />
-                <h2 className="text-xl font-semibold text-foreground">
-                  Confirm Deletion
-                </h2>
-              </div>
-              <button
-                onClick={() => setDeleteConf({ ...deleteConf, isOpen: false })}
-                className="text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </CardHeader>
-            <CardContent>
-              <p className="text-foreground mb-6">
-                Are you sure you want to delete "{deleteConf.title}"?
-                <br />
-                <span className="text-sm text-muted-foreground mt-2 block">
-                  This action cannot be undone.
-                </span>
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  className="flex-1 bg-secondary border-border text-foreground hover:bg-muted"
-                  onClick={() =>
-                    setDeleteConf({ ...deleteConf, isOpen: false })
-                  }
+      {
+        deleteConf.isOpen && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4 backdrop-blur-[2px]">
+            <Card className="w-full max-w-md bg-card border-border shadow-2xl">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertTriangle className="w-5 h-5" />
+                  <h2 className="text-xl font-semibold text-foreground">
+                    Confirm Deletion
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setDeleteConf({ ...deleteConf, isOpen: false })}
+                  className="text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Cancel
-                </Button>
-                <Button
-                  className="flex-1 bg-destructive hover:bg-destructive/90"
-                  onClick={handleConfirmDelete}
-                >
-                  Delete
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+                  <X className="w-5 h-5" />
+                </button>
+              </CardHeader>
+              <CardContent>
+                <p className="text-foreground mb-6">
+                  Are you sure you want to delete "{deleteConf.title}"?
+                  <br />
+                  <span className="text-sm text-muted-foreground mt-2 block">
+                    This action cannot be undone.
+                  </span>
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="flex-1 bg-secondary border-border text-foreground hover:bg-muted"
+                    onClick={() =>
+                      setDeleteConf({ ...deleteConf, isOpen: false })
+                    }
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    className="flex-1 bg-destructive hover:bg-destructive/90"
+                    onClick={handleConfirmDelete}
+                  >
+                    Delete
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )
+      }
 
       {/* CATALOG TEMPLATE MODAL */}
       <AnimatePresence>
@@ -2086,6 +2461,6 @@ export default function TemplatesPage() {
           />
         )}
       </AnimatePresence>
-    </div>
+    </div >
   );
 }

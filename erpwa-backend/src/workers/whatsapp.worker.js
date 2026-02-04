@@ -201,7 +201,7 @@ async function processImageMessage(message, accessToken, to, vendor) {
 
 async function processTemplateMessage(message, accessToken, to, vendor) {
   const { outboundPayload } = message;
-  
+
   if (!outboundPayload || !outboundPayload.templateId) {
     throw new Error("Missing template payload");
   }
@@ -312,7 +312,7 @@ async function processTemplateMessage(message, accessToken, to, vendor) {
     }
   }
 
-  // Debug Log
+  // Debug Log - Full payload inspection
   log("info", "Constructed Template Components", {
     messageId: message.id,
     templateName: template.metaTemplateName,
@@ -320,16 +320,51 @@ async function processTemplateMessage(message, accessToken, to, vendor) {
     isCarousel,
     isCatalog,
     components,
+    outboundPayload, // Debug: Show full payload
+    templateBody: templateLang.body, // Debug: Show template body to see variables
+    bodyVariablesReceived: outboundPayload.bodyVariables, // Debug: Show what variables came in
   });
 
-  // B. Body
-  if (outboundPayload.bodyVariables && outboundPayload.bodyVariables.length > 0) {
+  // B. Body Variables
+  // Parse template body to find all {{n}} placeholders
+  const bodyPlaceholders = templateLang.body?.match(/\{\{\d+\}\}/g) || [];
+  const uniquePlaceholders = [...new Set(bodyPlaceholders)];
+  const requiredVariableCount = uniquePlaceholders.length;
+
+  // Get provided variables (from campaign)
+  const providedVariables = outboundPayload.bodyVariables || [];
+
+  // If template has body variables, we MUST send body component
+  if (requiredVariableCount > 0) {
+    // Build parameters array - use provided values or fallback to empty/placeholder
+    const bodyParameters = [];
+    for (let i = 0; i < requiredVariableCount; i++) {
+      const value = providedVariables[i];
+      bodyParameters.push({
+        type: "text",
+        // Use provided value, or fallback to prevent 131009 error
+        // Empty string is not valid - use a space or placeholder text
+        text: value && String(value).trim() ? String(value) : " ",
+      });
+    }
+
     components.push({
       type: "body",
-      parameters: outboundPayload.bodyVariables.map((v) => ({
-        type: "text",
-        text: String(v),
-      })),
+      parameters: bodyParameters,
+    });
+
+    log("info", "Body variables processed", {
+      messageId: message.id,
+      requiredVariableCount,
+      providedVariablesCount: providedVariables.length,
+      bodyParameters,
+    });
+  } else if (providedVariables.length > 0) {
+    // Template doesn't have placeholders but variables were provided (edge case)
+    // Don't send body component - this would cause a different error
+    log("warn", "Variables provided but template has no placeholders", {
+      messageId: message.id,
+      providedVariables,
     });
   }
 

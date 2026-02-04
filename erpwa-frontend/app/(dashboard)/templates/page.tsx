@@ -43,7 +43,8 @@ import { toast } from "react-toastify";
 import { cn } from "@/lib/utils";
 import { leadsAPI } from "@/lib/leadsApi";
 import { Lead } from "@/lib/types";
-import CatalogTemplateModal from "@/components/templates/CatalogTemplateModal";
+import CatalogTemplateModal from "../../../components/templates/CatalogTemplateModal";
+import { processMedia } from "@/lib/mediaProcessor";
 
 const formatError = (error: any, defaultMsg: string) => {
   const errorData = error.response?.data;
@@ -112,6 +113,8 @@ export default function TemplatesPage() {
     isOpen: boolean;
     id?: string;
     title?: string;
+    isMeta?: boolean;
+    metaName?: string;
   }>({ isOpen: false });
 
   // --- Create/Edit Modal State ---
@@ -172,8 +175,8 @@ export default function TemplatesPage() {
   }, [showSendModal]);
 
   // Fetch Templates
-  const fetchAllTemplates = async () => {
-    setLoading(true);
+  const fetchAllTemplates = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [localRes, metaRes] = await Promise.all([
         api.get("/vendor/templates"),
@@ -407,7 +410,14 @@ export default function TemplatesPage() {
       }
 
       if (formData.headerType !== "TEXT" && headerFile) {
-        data.append("header.file", headerFile);
+        try {
+          const { file } = await processMedia(headerFile);
+          data.append("header.file", file);
+        } catch (err: any) {
+          toast.error(err.message || "Media validation failed");
+          setIsCreating(false);
+          return;
+        }
       }
 
       buttons.forEach((btn, index) => {
@@ -434,13 +444,13 @@ export default function TemplatesPage() {
               : t
           )
         );
-        fetchAllTemplates();
+        fetchAllTemplates(true);
       } else {
         await api.post("/vendor/templates", data, {
           headers: { "Content-Type": "multipart/form-data" },
         });
         toast.success("Template created successfully!");
-        fetchAllTemplates();
+        fetchAllTemplates(true);
       }
 
       setShowCreateModal(false);
@@ -457,7 +467,7 @@ export default function TemplatesPage() {
       setIsCreating(true);
       await api.post("/vendor/templates", templateData);
       toast.success("Catalog template created successfully!");
-      fetchAllTemplates();
+      fetchAllTemplates(true);
       setShowCatalogModal(false);
     } catch (error: any) {
       toast.error(formatError(error, "Failed to create catalog template"));
@@ -479,7 +489,8 @@ export default function TemplatesPage() {
     try {
       await api.post(`/vendor/templates/${template.id}/submit`);
       toast.success("Template submitted to Meta successfully!");
-      fetchAllTemplates();
+      setTemplates(prev => prev.map(t => t.id === template.id ? { ...t, status: 'pending' } : t));
+      fetchAllTemplates(true); // Silent update to ensure full sync
     } catch (error: any) {
       toast.error(formatError(error, "Failed to submit template"));
     } finally {
@@ -493,7 +504,10 @@ export default function TemplatesPage() {
     try {
       const res = await api.post(`/vendor/templates/${id}/sync-status`);
       toast.success(res.data.message || "Status synced successfully");
-      fetchAllTemplates();
+      if (res.data.status) {
+        setTemplates(prev => prev.map(t => t.id === id ? { ...t, status: res.data.status } : t));
+      }
+      fetchAllTemplates(true); // Silent update for full consistency
     } catch (error: any) {
       toast.error(formatError(error, "Failed to sync status"));
     } finally {
@@ -511,39 +525,53 @@ export default function TemplatesPage() {
   };
 
   const handleConfirmDelete = async () => {
-    if (!deleteConf.id) return;
+    if (!deleteConf.id && !deleteConf.metaName) return;
 
-    const id = deleteConf.id;
-    setDeleting(id);
-    try {
-      await api.delete(`/vendor/templates/${id}`);
-      toast.success("Template deleted successfully");
-      setTemplates((prev) => prev.filter((t) => t.id !== id));
-    } catch (error: any) {
-      toast.error(formatError(error, "Failed to delete template"));
-    } finally {
-      setDeleting(null);
-      setDeleteConf({ isOpen: false });
+    // Handle Meta Delete
+    if (deleteConf.isMeta && deleteConf.metaName) {
+      setDeleting(deleteConf.metaName);
+      try {
+        await api.delete(`/vendor/templates/meta?name=${encodeURIComponent(deleteConf.metaName)}`);
+        toast.success("Template deleted from Meta");
+        fetchAllTemplates(true); // Refresh list to remove it
+      } catch (error: any) {
+        toast.error(formatError(error, "Failed to delete from Meta"));
+      } finally {
+        setDeleting(null);
+        setDeleteConf({ isOpen: false });
+      }
+      return;
+    }
+
+    // Handle Local Delete
+    if (deleteConf.id) {
+      const id = deleteConf.id;
+      setDeleting(id);
+      try {
+        await api.delete(`/vendor/templates/${id}`);
+        toast.success("Template deleted successfully");
+        setTemplates((prev) => prev.filter((t) => t.id !== id));
+      } catch (error: any) {
+        toast.error(formatError(error, "Failed to delete template"));
+      } finally {
+        setDeleting(null);
+        setDeleteConf({ isOpen: false });
+      }
     }
   };
 
-  const handleMetaDelete = async (metaName: string) => {
-    if (!metaName) return;
-    if (!confirm("Are you sure you want to delete this template from Meta? This cannot be undone.")) return;
-
-    setDeleting(metaName);
-    try {
-      await api.delete(`/vendor/templates/meta?name=${encodeURIComponent(metaName)}`);
-      toast.success("Template deleted from Meta");
-      fetchAllTemplates(); // Refresh list to remove it
-    } catch (error: any) {
-      toast.error(formatError(error, "Failed to delete from Meta"));
-    } finally {
-      setDeleting(null);
-    }
+  const handleMetaDelete = (metaName: string, displayName: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDeleteConf({
+      isOpen: true,
+      title: displayName || metaName,
+      isMeta: true,
+      metaName: metaName,
+    });
   };
 
-  const handleMetaSend = async (metaTpl: any) => {
+  const handleMetaSend = async (metaTpl: any, e: React.MouseEvent) => {
+    e.stopPropagation();
     setImporting(metaTpl.id || metaTpl.metaTemplateName);
     try {
       // Import first (it returns the full template object)
@@ -804,7 +832,7 @@ export default function TemplatesPage() {
               onClick={openCreateModal}
               className="shadow-lg shadow-green-500/20 bg-green-600 hover:bg-green-700 text-white transition-all hover:scale-105 active:scale-95"
             >
-              <Plus className="w-4 h-4 mr-2" /> New Template
+              <Plus className="w-4 h-4 mr-2" /> Standard Template
             </Button>
             <Button
               onClick={() => setShowCatalogModal(true)}
@@ -992,6 +1020,7 @@ export default function TemplatesPage() {
 
                       <CardContent className="p-0 flex-1 flex flex-col relative bg-muted/5">
                         <div className="p-5 flex-1 relative overflow-hidden">
+                          {/* Subtle background pattern for whatsapp feel */}
                           <div className="absolute inset-0 opacity-[0.03] bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px]"></div>
 
                           <div className="bg-white dark:bg-muted rounded-tr-xl rounded-bl-xl rounded-br-xl rounded-tl-none p-3 shadow-sm border border-border/20 text-xs text-foreground/80 leading-relaxed font-sans relative z-10 max-w-[90%] before:content-[''] before:absolute before:top-0 before:-left-1.5 before:w-3 before:h-3 before:bg-white dark:before:bg-muted before:[clip-path:polygon(100%_0,0_0,100%_100%)]">
@@ -999,10 +1028,8 @@ export default function TemplatesPage() {
                               <div className="flex items-center gap-2 mb-2 pb-2 border-b border-dashed border-border/40 text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
                                 {t.languages[0]?.headerType === "IMAGE" ? (
                                   <ImageIcon className="w-3 h-3" />
-                                ) : t.languages[0]?.headerType === "VIDEO" ? (
-                                  <Video className="w-3 h-3" />
                                 ) : (
-                                  <FileText className="w-3.5 h-3.5" />
+                                  <Paperclip className="w-3 h-3" />
                                 )}
                                 {t.languages[0]?.headerType}
                               </div>
@@ -1011,6 +1038,7 @@ export default function TemplatesPage() {
                               {t.languages[0]?.body || "No content"}
                             </p>
 
+                            {/* Show button types (Quick Reply / URL / Phone) inline below the body */}
                             {t.buttons && t.buttons.length > 0 && (
                               <div className="mt-2 flex items-center gap-2">
                                 {t.buttons.map((b: any, i: number) => (
@@ -1019,14 +1047,13 @@ export default function TemplatesPage() {
                                     variant="outline"
                                     className="text-[10px] px-2 py-0.5 h-6"
                                   >
-                                    {b.type === "URL" ? (
-                                      <Globe className="w-2.5 h-2.5 mr-1" />
-                                    ) : b.type === "PHONE_NUMBER" ? (
-                                      <Phone className="w-2.5 h-2.5 mr-1" />
-                                    ) : (
-                                      <CheckCircle className="w-2.5 h-2.5 mr-1" />
-                                    )}
-                                    {b.text}
+                                    {b.type === "QUICK_REPLY"
+                                      ? "Quick Reply"
+                                      : b.type === "URL"
+                                        ? "URL"
+                                        : b.type === "PHONE_NUMBER"
+                                          ? "Phone"
+                                          : b.type}
                                   </Badge>
                                 ))}
                               </div>
@@ -1039,102 +1066,67 @@ export default function TemplatesPage() {
                                 </span>
                               )}
                               <span className="text-[9px] text-muted-foreground font-medium">
-                                {t.isMetaOnly ? "Available on Meta" : formatTime(t.createdAt)}
+                                {formatTime(t.createdAt)}
                               </span>
                             </div>
                           </div>
                         </div>
 
+                        {/* Actions Footer */}
                         <div className="p-3 bg-card border-t border-border/40 flex items-center gap-2">
-                          {t.isMetaOnly ? (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="flex-1 h-8 text-xs font-bold text-green-600 bg-green-500/5 hover:bg-green-500/10 hover:text-green-700"
-                                onClick={() => handleMetaSend(t)}
-                                disabled={importing === (t.id || t.metaTemplateName)}
-                              >
-                                {importing === (t.id || t.metaTemplateName) ? (
-                                  <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
-                                ) : (
-                                  <Send className="w-3 h-3 mr-1.5" />
-                                )}
-                                Send
-                              </Button>
-                              <div className="w-px h-4 bg-border/60"></div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="flex-1 h-8 text-xs font-bold text-red-500/80 bg-red-500/5 hover:text-red-600 hover:bg-red-500/10 transition-all"
-                                onClick={() => handleMetaDelete(t.metaTemplateName)}
-                                disabled={deleting === t.metaTemplateName}
-                              >
-                                {deleting === t.metaTemplateName ? (
-                                  <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
-                                ) : (
-                                  <Trash2 className="w-3 h-3 mr-1.5" />
-                                )}
-                                Delete
-                              </Button>
-                            </>
-                          ) : (
-                            <>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className={cn(
-                                  "flex-1 h-8 text-xs font-bold transition-all",
-                                  t.status === "draft"
-                                    ? "text-blue-600 bg-blue-500/5 hover:bg-blue-500/10"
-                                    : t.status === "approved"
-                                      ? "text-green-600 bg-green-500/5 hover:bg-green-500/10"
-                                      : "text-muted-foreground bg-muted/30 hover:bg-muted/50"
-                                )}
-                                onClick={(e) => {
-                                  if (t.status === "approved") {
-                                    e.stopPropagation();
-                                    openSendModal(t);
-                                  } else if (t.status === "draft" || t.status === "rejected") {
-                                    handleSubmitToMeta(t, e);
-                                  } else {
-                                    handleSyncStatus(t.id, e);
-                                  }
-                                }}
-                                disabled={submitting === t.id || syncing === t.id}
-                              >
-                                {submitting === t.id || syncing === t.id ? (
-                                  <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
-                                ) : t.status === "draft" || t.status === "rejected" ? (
-                                  <Upload className="w-3 h-3 mr-1.5" />
-                                ) : t.status === "approved" ? (
-                                  <Send className="w-3 h-3 mr-1.5" />
-                                ) : (
-                                  <RefreshCw className="w-3 h-3 mr-1.5" />
-                                )}
-                                {t.status === "draft" || t.status === "rejected"
-                                  ? "Submit"
-                                  : t.status === "approved"
-                                    ? "Send"
-                                    : "Sync"}
-                              </Button>
-                              <div className="w-px h-4 bg-border/60"></div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="flex-1 h-8 text-xs font-bold text-red-500/80 bg-red-500/5 hover:text-red-600 hover:bg-red-500/10 transition-all font-bold"
-                                onClick={(e) => handleDelete(t, e)}
-                                disabled={deleting === t.id}
-                              >
-                                {deleting === t.id ? (
-                                  <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
-                                ) : (
-                                  <Trash2 className="w-3 h-3 mr-1.5" />
-                                )}
-                                Delete
-                              </Button>
-                            </>
-                          )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className={cn(
+                              "flex-1 h-8 text-xs font-bold transition-all",
+                              t.status === "draft"
+                                ? "text-blue-600 bg-blue-500/5 hover:bg-blue-500/10"
+                                : t.status === "approved"
+                                  ? "text-green-600 bg-green-500/5 hover:bg-green-500/10"
+                                  : "text-muted-foreground bg-muted/30 hover:bg-muted/50"
+                            )}
+                            onClick={(e) => {
+                              if (t.status === "approved") {
+                                e.stopPropagation();
+                                openSendModal(t);
+                              } else if (t.status === "draft") {
+                                handleSubmitToMeta(t, e);
+                              } else {
+                                handleSyncStatus(t.id, e);
+                              }
+                            }}
+                            disabled={!!syncing || !!submitting}
+                          >
+                            {syncing === t.id || submitting === t.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />
+                            ) : t.status === "draft" ? (
+                              <Upload className="w-3 h-3 mr-1.5" />
+                            ) : t.status === "approved" ? (
+                              <Send className="w-3 h-3 mr-1.5" />
+                            ) : (
+                              <RefreshCw className="w-3 h-3 mr-1.5" />
+                            )}
+                            {t.status === "draft"
+                              ? "Submit"
+                              : t.status === "approved"
+                                ? "Send"
+                                : "Sync"}
+                          </Button>
+                          <div className="w-px h-4 bg-border/60"></div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="flex-1 h-8 text-xs font-bold text-red-500/80 bg-red-500/5 hover:text-red-600 hover:bg-red-500/10 transition-all font-bold"
+                            onClick={(e) => handleDelete(t, e)}
+                            disabled={!!deleting}
+                          >
+                            {deleting === t.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin mr-1.5" />
+                            ) : (
+                              <Trash2 className="w-3 h-3 mr-1.5" />
+                            )}
+                            Delete
+                          </Button>
                         </div>
                       </CardContent>
                     </Card>

@@ -15,6 +15,8 @@ import ReactDOM from "react-dom";
 import { galleryAPI } from "@/lib/galleryApi";
 import { categoriesAPI } from "@/lib/categoriesApi"; // ✅ Import categories API
 import api from "@/lib/api";
+import { processMedia } from "@/lib/mediaProcessor";
+import { toast } from "react-toastify";
 import type { Category } from "@/lib/types"; // Assuming types exist
 
 interface GalleryModalProps {
@@ -106,23 +108,37 @@ export default function GalleryModal({
 
     try {
       setUploading(true);
+      const { file: processedFile } = await processMedia(file);
+
       const formData = new FormData();
-      formData.append("file", file);
-      // Pass category context if selected
+      formData.append("images", processedFile); // Backend expects 'images'
+
       if (selectedCategory)
         formData.append("category_id", selectedCategory.toString());
       if (selectedSubcategory)
         formData.append("subcategory_id", selectedSubcategory.toString());
 
-      await api.post("/gallery/upload", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
+      const res = await galleryAPI.upload(formData, true);
 
-      // Refresh list
+      toast.success("Image uploaded successfully!");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+
+      // 🔥 Auto-select and close for single-select mode
+      const uploadedImage = res.data?.images?.[0];
+      const imageUrl = uploadedImage?.url || uploadedImage?.s3_url;
+
+      if (imageUrl && !multiSelect) {
+        onSelect(imageUrl);
+        onClose();
+        return;
+      }
+
       setPage(1);
       fetchImages(1, true);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Upload failed", error);
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || error.message || "Failed to upload image.";
+      toast.error(errorMsg);
     } finally {
       setUploading(false);
     }
@@ -262,7 +278,7 @@ export default function GalleryModal({
             ) : (
               <Upload size={18} />
             )}
-            Upload Image
+            Upload from Device
           </button>
           <input
             type="file"

@@ -114,10 +114,11 @@ export const galleryAPI = {
    * Upload images with files
    * Sends FormData with images to backend
    */
-  upload: async (data: FormData): Promise<ApiResponse<any>> => {
+  upload: async (data: FormData, skipGallery: boolean = false): Promise<ApiResponse<any>> => {
     // Send FormData directly to upload endpoint
     // Don't set Content-Type header - axios will set it automatically with boundary
-    const response = await api.post('/gallery/upload', data)
+    const url = `/gallery/upload${skipGallery ? '?skipGallery=true' : ''}`
+    const response = await api.post(url, data)
     return { data: response.data }
   },
 }

@@ -168,7 +168,8 @@ router.get(
           languages: true,
           buttons: true,
           media: true,
-          carouselCards: { orderBy: { position: 'asc' } }, // ✅ Include carousel cards
+          carouselCards: { orderBy: { position: "asc" } },
+          catalogProducts: { orderBy: { position: "asc" } }, // ✅ Include catalog products
         },
       });
       templates.forEach((t) => templatesMap.set(t.id, t));
@@ -233,10 +234,10 @@ router.get(
           type: b.type,
           text: b.text,
           value: b.value,
-          value: b.value,
         })),
-        templateType: tmpl.templateType || 'standard', // ✅ Add Template Type
-        carouselCards: tmpl.carouselCards, // ✅ Add Carousel Cards
+        templateType: tmpl.templateType || "standard",
+        carouselCards: tmpl.carouselCards,
+        catalogProducts: tmpl.catalogProducts, // ✅ Add Catalog Products
       };
 
       return {

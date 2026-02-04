@@ -146,6 +146,11 @@ export interface Message {
       buttonValue?: string;
       buttonType?: string;
     }[];
+    catalogProducts?: {
+      id: string;
+      productId: string;
+      position: number;
+    }[];
   };
   optimistic?: boolean;
   clientTempId?: string;
@@ -200,5 +205,10 @@ export interface Template {
     buttonType?: string;
     position: number;
     mediaHandle?: string;
+  }[];
+  catalogProducts?: {
+    id: string;
+    productId: string;
+    position: number;
   }[];
 }

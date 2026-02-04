@@ -221,7 +221,6 @@ router.post(
         }
 
 
-
         /** 🔹 SEND TO WHATSAPP */
         const metaResp = await fetch(
           `https://graph.facebook.com/v24.0/${vendor.whatsappPhoneNumberId}/messages`,
@@ -245,6 +244,7 @@ router.post(
         );
 
         const metaData = await metaResp.json();
+
         if (!metaResp.ok) throw metaData;
 
         const whatsappMessageId = metaData.messages?.[0]?.id;

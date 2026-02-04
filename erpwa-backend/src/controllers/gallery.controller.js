@@ -154,10 +154,6 @@ class GalleryController {
       const category_id = req.body.category_id;
       const subcategory_id = req.body.subcategory_id;
 
-      if (!category_id) {
-        return res.status(400).json({ error: "Category is required" });
-      }
-
       console.log(`📤 Uploading ${req.files.length} images to S3...`);
 
       // Upload files to S3
@@ -183,6 +179,20 @@ class GalleryController {
       console.log(
         `✅ Successfully uploaded ${uploadResults.length} images to S3`
       );
+
+      // If skipGallery is true, don't save to DB (use for direct device uploads)
+      if (req.query.skipGallery === 'true') {
+        return res.json({
+          success: true,
+          images: imageEntries.map(e => ({
+            url: e.s3_url,
+            s3_url: e.s3_url,
+            title: e.title,
+            id: Math.floor(Math.random() * -1000000).toString() // Return negative IDs for temp images
+          })),
+          message: `Successfully uploaded ${uploadResults.length} images (temporary)`
+        });
+      }
 
       // Use bulk create to save images
       const dbResult = await GalleryService.bulkCreate(

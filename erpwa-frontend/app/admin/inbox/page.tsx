@@ -991,9 +991,9 @@ export default function InboxPage() {
               m.outboundPayload?.template ||
               (m.outboundPayload?.name
                 ? {
-                    footer: m.outboundPayload.footer,
-                    buttons: m.outboundPayload.buttons,
-                  }
+                  footer: m.outboundPayload.footer,
+                  buttons: m.outboundPayload.buttons,
+                }
                 : undefined),
 
             // ✅ Map outboundPayload for interactive messages
@@ -1016,11 +1016,11 @@ export default function InboxPage() {
         prev.map((c) =>
           c.id === id
             ? {
-                ...c,
-                sessionStarted: res.data.sessionStarted,
-                sessionActive: res.data.sessionActive,
-                sessionExpiresAt: res.data.sessionExpiresAt,
-              }
+              ...c,
+              sessionStarted: res.data.sessionStarted,
+              sessionActive: res.data.sessionActive,
+              sessionExpiresAt: res.data.sessionExpiresAt,
+            }
             : c,
         ),
       );
@@ -1084,11 +1084,10 @@ export default function InboxPage() {
   );
 
   return (
-    <div className="flex flex-col md:flex-row h-full overflow-hidden bg-background">
+    <div className="flex flex-col md:flex-row h-full overflow-hidden overflow-x-hidden bg-background">
       <div
-        className={`${
-          showChat ? "hidden md:block" : "block"
-        } w-full md:w-auto h-full flex-shrink-0`}
+        className={`${showChat ? "hidden md:block" : "block"
+          } w-full md:w-auto h-full flex-shrink-0`}
       >
         <ConversationList
           conversations={conversations}

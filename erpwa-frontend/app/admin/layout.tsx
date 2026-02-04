@@ -38,7 +38,7 @@ function LayoutContent({ children }: { children: React.ReactNode }) {
           }`}
       >
         <HeaderAdmin />
-        <main className="flex-1 overflow-auto">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">{children}</main>
       </div>
     </div>
   )

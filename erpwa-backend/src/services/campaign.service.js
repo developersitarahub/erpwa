@@ -24,10 +24,26 @@ class CampaignService {
     // 1️⃣ Validate template
     const template = await prisma.template.findFirst({
       where: { id: templateId, vendorId, status: "approved" },
+      include: {
+        languages: { where: { language: language } },
+      },
     });
 
     if (!template) {
       throw new Error("Approved template not found");
+    }
+
+    // 1b️⃣ Check body variables
+    const templateLang = template.languages[0];
+    if (templateLang) {
+      const bodyPlaceholders = templateLang.body?.match(/\{\{\d+\}\}/g) || [];
+      const uniquePlaceholders = [...new Set(bodyPlaceholders)];
+      const requiredVariableCount = uniquePlaceholders.length;
+      const providedCount = bodyVariables?.length || 0;
+
+      if (requiredVariableCount > 0 && providedCount < requiredVariableCount) {
+        console.warn(`[Campaign] Template ${template.metaTemplateName} requires ${requiredVariableCount} body variables, but only ${providedCount} provided. Using fallback values.`);
+      }
     }
 
     // 2️⃣ Process Recipients (Find/Create Conversations)

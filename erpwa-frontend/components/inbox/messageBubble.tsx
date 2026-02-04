@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import Image from "next/image";
-import { MoreVertical, Check, CheckCheck, AlertCircle } from "lucide-react";
+import { MoreVertical, Check, CheckCheck, AlertCircle, ShoppingBag } from "lucide-react";
 import type { Message, Conversation } from "@/lib/types";
 import { useState, useRef } from "react";
 
@@ -105,11 +105,10 @@ function AudioPlayer({ mediaUrl }: { mediaUrl: string }) {
               return (
                 <div
                   key={i}
-                  className={`flex-1 rounded-full transition-all ${
-                    isFilled
-                      ? "bg-primary"
-                      : "bg-primary/30 hover:bg-primary/40"
-                  }`}
+                  className={`flex-1 rounded-full transition-all ${isFilled
+                    ? "bg-primary"
+                    : "bg-primary/30 hover:bg-primary/40"
+                    }`}
                   style={{ height: `${height * 3}px`, minWidth: "2px" }}
                 />
               );
@@ -233,11 +232,10 @@ export default function MessageBubble({
   } = {}) => (
     <div className={`flex items-center gap-0.5 select-none ${customClass}`}>
       <span
-        className={`text-[10px] lowercase leading-none ${
-          isOverlay
-            ? "text-white drop-shadow-sm font-medium"
-            : "text-muted-foreground/60"
-        }`}
+        className={`text-[10px] lowercase leading-none ${isOverlay
+          ? "text-white drop-shadow-sm font-medium"
+          : "text-muted-foreground/60"
+          }`}
       >
         {formattedTime}
       </span>
@@ -261,27 +259,28 @@ export default function MessageBubble({
     <motion.div
       initial={{ opacity: 0, y: 20, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
-      className={`flex items-end gap-2 ${
-        msg.sender === "executive" ? "justify-end" : "justify-start"
-      }`}
+      className={`flex items-end gap-2 ${msg.sender === "executive" ? "justify-end" : "justify-start"
+        }`}
     >
       <div
         className={`flex flex-col gap-1
-        max-w-[70%] sm:max-w-[60%] md:max-w-[50%] lg:max-w-[40%] xl:max-w-[35%]
-        ${
-          msg.outboundPayload?.interactive || msg.template?.buttons
+        ${(isImage || isVideo) ? 'w-fit' :
+            (msg.template?.header?.type === 'IMAGE' || msg.template?.header?.type === 'VIDEO')
+              ? 'w-fit max-w-[280px]'
+              : 'max-w-[70%] sm:max-w-[60%] md:max-w-[50%] lg:max-w-[40%] xl:max-w-[35%]'}
+        ${msg.outboundPayload?.interactive || msg.template?.buttons
             ? "min-w-[200px]"
-            : "min-w-[120px]"
-        }`}
+            : (isImage || isVideo) ? "" : "min-w-[120px]"
+          }
+        ${(msg.template?.templateType === "carousel" || msg.carouselCards?.length) ? 'overflow-visible' : ''}`}
       >
         {/* MAIN TEXT/MEDIA BUBBLE */}
         <div
-          className={`group relative shadow-sm overflow-hidden flex flex-col border border-black/5 dark:border-white/5 p-0
-          ${
-            msg.sender === "executive"
+          className={`group relative shadow-none overflow-hidden flex flex-col p-0
+          ${msg.sender === "executive"
               ? "bg-wa-outbound rounded-br-none"
               : "bg-wa-inbound rounded-bl-none"
-          }
+            }
           rounded-lg max-w-full`}
         >
           {/* TEMPLATE HEADER (Rich Media) */}
@@ -350,43 +349,82 @@ export default function MessageBubble({
           )}
 
           {/* INNER CONTENT WRAPPER */}
-          <div className="p-1 flex flex-col gap-1">
-            {/* MEDIA */}
+          <div className={`flex flex-col ${!isImage && !isVideo ? 'p-1 gap-1' : ''}`}>
+            {/* IMAGE MESSAGE - WhatsApp Style */}
             {isImage && effectiveMediaUrl && (
-              <div className="relative">
-                <img
-                  src={effectiveMediaUrl}
-                  alt="Image"
-                  className="max-w-[300px] max-h-[300px] w-auto h-auto object-cover rounded-lg cursor-pointer"
-                  onClick={() => window.open(effectiveMediaUrl!, "_blank")}
-                />
-                {!cleanText &&
-                  renderTimestamp({
-                    isOverlay: true,
-                    customClass:
-                      "absolute bottom-1.5 right-2 bg-black/20 rounded px-1 py-0.5 backdrop-blur-[2px]",
-                  })}
+              <div className="w-fit max-w-[300px]">
+                {/* Image container with padding to create border effect */}
+                <div className="p-1">
+                  <img
+                    src={effectiveMediaUrl}
+                    alt="Image"
+                    className={`w-full h-auto object-cover cursor-pointer ${cleanText ? 'rounded-t-md' : 'rounded-md'}`}
+                    onClick={() => window.open(effectiveMediaUrl!, "_blank")}
+                  />
+                </div>
+
+                {/* Caption - Inside the same bubble, directly below image */}
+                {cleanText && (
+                  <div className="relative px-2 pb-2">
+                    <p className={`text-[13px] break-words whitespace-pre-wrap leading-[18px] pr-14 ${msg.template?.footer ? 'pb-1' : 'pb-4'}`}>
+                      {cleanText}
+                    </p>
+                    {/* Timestamp - Bottom right inside bubble (hide if template has footer) */}
+                    {!msg.template?.footer && (
+                      <div className="absolute bottom-0 right-1.5 flex items-center gap-1">
+                        {renderTimestamp()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Timestamp overlay for image-only messages */}
+                {!cleanText && (
+                  <div className="absolute bottom-2 right-2">
+                    {renderTimestamp({ isOverlay: true })}
+                  </div>
+                )}
               </div>
             )}
 
+            {/* VIDEO MESSAGE - WhatsApp Style */}
             {isVideo && effectiveMediaUrl && (
-              <div className="relative">
-                <video
-                  src={effectiveMediaUrl}
-                  controls
-                  className="max-w-[300px] max-h-[300px] w-auto h-auto object-cover rounded-lg"
-                />
-                {!cleanText &&
-                  renderTimestamp({
-                    isOverlay: true,
-                    customClass:
-                      "absolute bottom-6 right-2 bg-black/20 rounded px-1 py-0.5 backdrop-blur-[2px]",
-                  })}
+              <div className="w-fit max-w-[300px]">
+                {/* Video container with padding to create border effect */}
+                <div className="p-1">
+                  <video
+                    src={effectiveMediaUrl}
+                    controls
+                    className={`w-full h-auto object-cover ${cleanText ? 'rounded-t-md' : 'rounded-md'}`}
+                  />
+                </div>
+
+                {/* Caption - Inside the same bubble, directly below video */}
+                {cleanText && (
+                  <div className="relative px-2 pb-2">
+                    <p className={`text-[13px] break-words whitespace-pre-wrap leading-[18px] pr-14 ${msg.template?.footer ? 'pb-1' : 'pb-4'}`}>
+                      {cleanText}
+                    </p>
+                    {/* Timestamp - Bottom right inside bubble (hide if template has footer) */}
+                    {!msg.template?.footer && (
+                      <div className="absolute bottom-0 right-1.5 flex items-center gap-1">
+                        {renderTimestamp()}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Timestamp overlay for video-only messages */}
+                {!cleanText && (
+                  <div className="absolute bottom-8 right-2">
+                    {renderTimestamp({ isOverlay: true })}
+                  </div>
+                )}
               </div>
             )}
 
             {isAudio && effectiveMediaUrl && (
-              <div className="relative">
+              <div className="relative p-1">
                 <AudioPlayer mediaUrl={effectiveMediaUrl} />
                 {!cleanText &&
                   renderTimestamp({ customClass: "absolute bottom-1 right-2" })}
@@ -394,7 +432,7 @@ export default function MessageBubble({
             )}
 
             {isDocument && effectiveMediaUrl && (
-              <div className="relative flex items-center gap-3 px-3 py-3 bg-muted/30 dark:bg-muted/10 rounded-lg pb-5">
+              <div className="relative flex items-center gap-3 px-3 py-3 bg-muted/30 dark:bg-muted/10 rounded-lg pb-5 m-1">
                 <div className="shrink-0 w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                   <svg
                     width="24"
@@ -500,20 +538,29 @@ export default function MessageBubble({
               </div>
             )}
 
-            {/* TEXT */}
-            {cleanText && (
-              <div className="px-1 text-sm break-words whitespace-pre-wrap">
+            {/* TEXT - Only for non-media messages */}
+            {cleanText && !isImage && !isVideo && (
+              <div className="px-2 text-sm break-words whitespace-pre-wrap">
                 {cleanText}
-                <span className="float-right ml-2 mt-1 -mb-1">
-                  {renderTimestamp()}
-                </span>
+                {/* Hide timestamp if template has footer */}
+                {!msg.template?.footer && (
+                  <span className="float-right ml-2 mt-1 -mb-1">
+                    {renderTimestamp()}
+                  </span>
+                )}
               </div>
             )}
 
             {/* TEMPLATE FOOTER */}
             {msg.template?.footer && (
-              <div className="px-1 text-xs text-muted-foreground italic opacity-80">
-                {msg.template.footer}
+              <div className="relative px-2 pb-2">
+                <div className="text-xs text-muted-foreground italic opacity-80 pr-14 pb-1">
+                  {msg.template.footer}
+                </div>
+                {/* Timestamp below footer */}
+                <div className="absolute bottom-0 right-1.5 flex items-center gap-1">
+                  {renderTimestamp()}
+                </div>
               </div>
             )}
           </div>
@@ -537,18 +584,16 @@ export default function MessageBubble({
         {msg.template?.buttons && msg.template.buttons.length > 0 && (
           <div className="w-full flex flex-col gap-1">
             <div
-              className={`flex gap-1.5 w-full ${
-                msg.template.buttons.length === 2 ? "flex-row" : "flex-col"
-              }`}
+              className={`flex gap-1.5 w-full ${msg.template.buttons.length === 2 ? "flex-row" : "flex-col"
+                }`}
             >
               {msg.template.buttons.map((btn, idx) => (
                 <button
                   key={idx}
-                  className={`flex-1 w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] border border-black/5 dark:border-white/5 ${
-                    msg.sender === "executive"
-                      ? "bg-wa-outbound"
-                      : "bg-wa-inbound"
-                  }`}
+                  className={`flex-1 w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] border border-black/5 dark:border-white/5 ${msg.sender === "executive"
+                    ? "bg-wa-outbound"
+                    : "bg-wa-inbound"
+                    }`}
                   onClick={() => {
                     if (btn.type === "URL" && btn.value) {
                       window.open(btn.value, "_blank");
@@ -564,81 +609,184 @@ export default function MessageBubble({
           </div>
         )}
 
-        {/* CAROUSEL CARDS */}
+        {/* CAROUSEL CARDS - WhatsApp Template Style */}
         {(msg.template?.templateType === "carousel" ||
           (msg.carouselCards && msg.carouselCards.length > 0) ||
           (msg.template?.carouselCards &&
-            msg.template.carouselCards.length > 0)) && (
-          <div className="flex overflow-x-auto gap-2 px-2 pb-2 mt-2 snap-x scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600">
-            {(msg.carouselCards || msg.template?.carouselCards || []).map(
-              (card, idx) => (
-                <div
-                  key={idx}
-                  className="shrink-0 w-[220px] bg-wa-inbound rounded-2xl shadow-sm border border-border/50 overflow-hidden snap-center flex flex-col"
-                >
-                  <div className="p-3">
-                    {/* Card Media */}
-                    {(card.mediaUrl || card.s3Url) && (
-                      <div className="relative h-28 w-full bg-muted mb-3 rounded-lg overflow-hidden">
-                        {card.mimeType?.startsWith("video") ? (
-                          <video
-                            src={card.mediaUrl || card.s3Url}
-                            className="w-full h-full object-cover"
-                            controls={false}
-                          />
-                        ) : (
-                          <img
-                            src={card.mediaUrl || card.s3Url}
-                            alt={card.title}
-                            className="w-full h-full object-cover"
-                          />
-                        )}
-                      </div>
-                    )}
-                    {/* Card Content */}
-                    <div className="flex-1">
-                      {card.title && (
-                        <p className="font-bold text-sm text-foreground line-clamp-1 mb-1">
-                          {idx + 1}. {card.title}
-                        </p>
-                      )}
-                      {card.subtitle && (
-                        <p className="text-xs text-muted-foreground line-clamp-2">
-                          {card.subtitle}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+            msg.template.carouselCards.length > 0)) && (() => {
+              const cards = msg.carouselCards || msg.template?.carouselCards || [];
+              const showNavButtons = cards.length > 2;
 
-                  {/* Card Button */}
-                  {card.buttonText && (
+              const scrollCarousel = (direction: 'left' | 'right') => {
+                const container = document.getElementById(`carousel-${msg.id}`);
+                if (container) {
+                  const cardWidth = 200 + 8; // card max-width + gap
+                  const scrollAmount = direction === 'left' ? -cardWidth * 2 : cardWidth * 2;
+                  container.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+                }
+              };
+
+              return (
+                <div className="relative mt-2 group/carousel">
+                  {/* Left Navigation Button */}
+                  {showNavButtons && (
                     <button
-                      className="w-full py-2.5 text-sm text-[#0084ff] dark:text-[#53bdeb] font-semibold border-t border-border/30 hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-                      onClick={() => {
-                        if (card.buttonType === "URL" && card.buttonValue) {
-                          window.open(card.buttonValue, "_blank");
-                        }
-                      }}
+                      className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 shadow-lg flex items-center justify-center transition-all active:scale-95 opacity-0 group-hover/carousel:opacity-100"
+                      onClick={() => scrollCarousel('left')}
+                      title="Scroll left"
                     >
-                      {card.buttonText}
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-white"
+                      >
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                      </svg>
                     </button>
                   )}
+
+                  {/* Right Navigation Button */}
+                  {showNavButtons && (
+                    <button
+                      className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 shadow-lg flex items-center justify-center transition-all active:scale-95 opacity-0 group-hover/carousel:opacity-100"
+                      onClick={() => scrollCarousel('right')}
+                      title="Scroll right"
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="text-white"
+                      >
+                        <polyline points="9 18 15 12 9 6"></polyline>
+                      </svg>
+                    </button>
+                  )}
+
+                  <div
+                    className="flex overflow-x-auto gap-2 pb-2 snap-x snap-mandatory scrollbar-none scroll-smooth px-1"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                    id={`carousel-${msg.id}`}
+                  >
+                    {cards.map((card, idx) => (
+                      <div
+                        key={idx}
+                        className="shrink-0 w-[205px] snap-start flex flex-col gap-1"
+                      >
+                        {/* Card Bubble - Image + Text */}
+                        <div className="bg-wa-outbound rounded-lg overflow-hidden">
+                          {/* Card Image with padding (green border effect) */}
+                          {(card.mediaUrl || card.s3Url) && (
+                            <div className="p-0.5">
+                              <div className="relative w-full aspect-square rounded-md overflow-hidden bg-gray-100 dark:bg-gray-800">
+                                {card.mimeType?.startsWith("video") ? (
+                                  <video
+                                    src={card.mediaUrl || card.s3Url}
+                                    className="w-full h-full object-cover"
+                                    controls={false}
+                                  />
+                                ) : (
+                                  <img
+                                    src={card.mediaUrl || card.s3Url}
+                                    alt={card.title}
+                                    className="w-full h-full object-cover"
+                                  />
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Card Text (Body) */}
+                          {card.title && (
+                            <div className="px-2 py-1">
+                              <p className="text-[12px] text-gray-900 dark:text-gray-100 break-words whitespace-pre-wrap leading-[16px] line-clamp-2">
+                                {card.title}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Card Footer */}
+                          {card.subtitle && (
+                            <div className="relative px-2 pb-1.5">
+                              <div className="text-[10px] text-muted-foreground italic opacity-80 line-clamp-1">
+                                {card.subtitle}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Reply Button - Separate from bubble */}
+                        <button
+                          className="w-full py-2 text-[12px] text-[#00a884] dark:text-[#53bdeb] font-medium bg-wa-outbound rounded-lg hover:bg-wa-outbound/90 transition-colors"
+                          onClick={() => {
+                            if (card.buttonType === "URL" && card.buttonValue) {
+                              window.open(card.buttonValue, "_blank");
+                            }
+                          }}
+                        >
+                          {card.buttonText || "Reply"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ),
-            )}
-          </div>
-        )}
+              );
+            })()}
+
+        {/* CATALOG PRODUCTS */}
+        {msg.template?.templateType === "catalog" &&
+          msg.template.catalogProducts &&
+          msg.template.catalogProducts.length > 0 && (
+            <div className="w-full mt-2 p-2 bg-wa-inbound rounded-xl border border-border/50 overflow-hidden">
+              <div className="grid grid-cols-2 gap-2">
+                {msg.template.catalogProducts.slice(0, 4).map((product, idx) => (
+                  <div
+                    key={idx}
+                    className="aspect-square bg-muted rounded-lg flex items-center justify-center relative overflow-hidden group border border-border/20"
+                  >
+                    <ShoppingBag className="w-8 h-8 text-primary/20" />
+                    <div className="absolute bottom-0 left-0 right-0 bg-black/60 p-1.5 backdrop-blur-[2px]">
+                      <div className="text-[10px] text-white truncate font-medium text-center">
+                        {product.productId}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {msg.template.catalogProducts.length > 4 && (
+                <div className="text-center mt-2.5 text-[10px] text-muted-foreground font-semibold uppercase tracking-widest bg-muted/50 py-1 rounded">
+                  + {msg.template.catalogProducts.length - 4} More Products
+                </div>
+              )}
+              <div className="mt-2 pt-2 border-t border-border/30">
+                <button className="w-full py-2.5 text-sm text-primary font-bold hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition-all flex items-center justify-center gap-2">
+                  <ShoppingBag className="w-4 h-4" />
+                  View Catalog
+                </button>
+              </div>
+            </div>
+          )}
 
         {/* LIST MENUS (External) */}
         {msg.outboundPayload?.interactive &&
           msg.outboundPayload.interactive.type === "list" && (
             <div className="w-full">
               <button
-                className={`w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] border border-black/5 dark:border-white/5 flex items-center justify-center gap-2 ${
-                  msg.sender === "executive"
-                    ? "bg-wa-outbound"
-                    : "bg-wa-inbound"
-                }`}
+                className={`w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] border border-black/5 dark:border-white/5 flex items-center justify-center gap-2 ${msg.sender === "executive"
+                  ? "bg-wa-outbound"
+                  : "bg-wa-inbound"
+                  }`}
               >
                 <svg
                   viewBox="0 0 24 24"
@@ -664,21 +812,19 @@ export default function MessageBubble({
           msg.outboundPayload.interactive.type === "button" && (
             <div className="w-full flex flex-col gap-1">
               <div
-                className={`flex gap-1.5 w-full ${
-                  msg.outboundPayload.interactive.action?.buttons?.length === 2
-                    ? "flex-row"
-                    : "flex-col"
-                }`}
+                className={`flex gap-1.5 w-full ${msg.outboundPayload.interactive.action?.buttons?.length === 2
+                  ? "flex-row"
+                  : "flex-col"
+                  }`}
               >
                 {msg.outboundPayload.interactive.action?.buttons?.map(
                   (btn: { reply: { title: string } }, idx: number) => (
                     <button
                       key={idx}
-                      className={`flex-1 w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] border border-black/5 dark:border-white/5 ${
-                        msg.sender === "executive"
-                          ? "bg-wa-outbound"
-                          : "bg-wa-inbound"
-                      }`}
+                      className={`flex-1 w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] border border-black/5 dark:border-white/5 ${msg.sender === "executive"
+                        ? "bg-wa-outbound"
+                        : "bg-wa-inbound"
+                        }`}
                     >
                       {btn.reply?.title}
                     </button>
@@ -693,11 +839,10 @@ export default function MessageBubble({
           msg.outboundPayload.interactive.type === "cta_url" && (
             <div className="w-full">
               <button
-                className={`w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 border border-black/5 dark:border-white/5 ${
-                  msg.sender === "executive"
-                    ? "bg-wa-outbound"
-                    : "bg-wa-inbound"
-                }`}
+                className={`w-full hover:brightness-95 shadow-sm rounded-lg py-2 px-3 text-[#00a884] dark:text-[#53bdeb] font-semibold text-center text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 border border-black/5 dark:border-white/5 ${msg.sender === "executive"
+                  ? "bg-wa-outbound"
+                  : "bg-wa-inbound"
+                  }`}
                 onClick={() => {
                   const url =
                     msg.outboundPayload?.interactive?.action?.parameters?.url;

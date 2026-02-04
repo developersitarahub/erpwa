@@ -148,6 +148,38 @@ router.post(
       headerMediaUrl = null // Header image URL from Meta
     } = req.body;
 
+    // Helper to process media
+    const processMedia = async (url, type, tId, lang) => {
+      try {
+        console.log(`⬇️ Downloading media from Meta: ${url}`);
+        const mediaResp = await fetch(url);
+        if (!mediaResp.ok) throw new Error("Failed to fetch media");
+
+        const buffer = await mediaResp.arrayBuffer(); // use arrayBuffer for node-fetch
+        const mimeType = mediaResp.headers.get("content-type") ||
+          (type === "IMAGE" ? "image/jpeg" : type === "VIDEO" ? "video/mp4" : "application/pdf");
+        const ext = mimeType.split("/")[1] || "bin";
+
+        const uploadResult = await uploadTemplateMediaToS3({
+          buffer: Buffer.from(buffer),
+          mimeType,
+          vendorId: req.user.vendorId,
+          templateId: tId,
+          language: lang,
+          extension: ext
+        });
+
+        console.log(`✅ Re-uploaded media to S3: ${uploadResult.url}`);
+        return {
+          url: uploadResult.url,
+          mimeType
+        };
+      } catch (e) {
+        console.error("Failed to process Meta media:", e);
+        return null; // Fallback to original URL or fail?
+      }
+    };
+
     // Check if exists
     const existing = await prisma.template.findFirst({
       where: {
@@ -158,30 +190,45 @@ router.post(
     });
 
     if (existing) {
-      // If the template exists but is missing media (and we have a URL), create it now
-      // This fixes issues where templates were imported before the media fix
-      if (headerMediaUrl && headerType !== "TEXT" && (!existing.media || existing.media.length === 0)) {
-        console.log(`📸 Backfilling media for existing template ${metaTemplateName}`);
-        await prisma.templateMedia.create({
-          data: {
-            templateId: existing.id,
-            language: language,
-            mediaType: headerType.toLowerCase(), // IMAGE, VIDEO, DOCUMENT
-            s3Url: headerMediaUrl,
-            uploadStatus: "uploaded",
-            mimeType: headerType === "IMAGE" ? "image/jpeg" : headerType === "VIDEO" ? "video/mp4" : "application/pdf"
-          }
-        });
+      // Logic for existing templates...
+      // If header type matches and URL is provided
+      if (headerMediaUrl && headerType !== "TEXT") {
+        const needsUpload = !existing.media.length || existing.media[0].s3Url.includes("whatsapp.net") || existing.media[0].s3Url.includes("fbcdn");
 
-        // Return the updated template with media
-        const updated = await prisma.template.findUnique({
-          where: { id: existing.id },
-          include: { languages: true, buttons: true, media: true }
-        });
-        return res.json(updated);
+        if (needsUpload) {
+          console.log(`📸 Updating media for existing template ${metaTemplateName}`);
+
+          const processed = await processMedia(headerMediaUrl, headerType, existing.id, language);
+
+          if (processed) {
+            // Upsert media
+            const mediaData = {
+              templateId: existing.id,
+              language: language,
+              mediaType: headerType.toLowerCase(),
+              s3Url: processed.url,
+              uploadStatus: "uploaded",
+              mimeType: processed.mimeType
+            };
+
+            if (existing.media.length > 0) {
+              await prisma.templateMedia.update({
+                where: { id: existing.media[0].id },
+                data: mediaData
+              });
+            } else {
+              await prisma.templateMedia.create({ data: mediaData });
+            }
+          }
+        }
       }
 
-      return res.json(existing);
+      // Return refreshed template
+      const updated = await prisma.template.findUnique({
+        where: { id: existing.id },
+        include: { languages: true, buttons: true, media: true }
+      });
+      return res.json(updated);
     }
 
     // Create template
@@ -205,23 +252,32 @@ router.post(
         headerText,
         footerText,
         metaStatus: status,
-        metaId: metaId // important specifically for sending usage
+        metaId: metaId
       },
     });
 
     // Create TemplateMedia record if there's a header media URL (from Meta)
     if (headerMediaUrl && headerType !== "TEXT") {
+      let finalUrl = headerMediaUrl;
+      let finalMime = headerType === "IMAGE" ? "image/jpeg" : headerType === "VIDEO" ? "video/mp4" : "application/pdf";
+
+      // Download and upload to S3
+      const processed = await processMedia(headerMediaUrl, headerType, template.id, language);
+      if (processed) {
+        finalUrl = processed.url;
+        finalMime = processed.mimeType;
+      }
+
       await prisma.templateMedia.create({
         data: {
           templateId: template.id,
           language: language,
-          mediaType: headerType.toLowerCase(), // IMAGE, VIDEO, DOCUMENT
-          s3Url: headerMediaUrl, // This is actually Meta's URL, but we use it for sending
+          mediaType: headerType.toLowerCase(),
+          s3Url: finalUrl,
           uploadStatus: "uploaded",
-          mimeType: headerType === "IMAGE" ? "image/jpeg" : headerType === "VIDEO" ? "video/mp4" : "application/pdf"
+          mimeType: finalMime
         }
       });
-      console.log(`📸 Stored Meta header media URL for template ${metaTemplateName}: ${headerMediaUrl}`);
     }
 
     // Create buttons
