@@ -71,13 +71,19 @@ export async function checkAndStartWorkflow(
   }
 
   // Find the node connected to Start
-  const firstEdge = edges.find((e) => e.source === startNode.id);
-  const nextNodeId = firstEdge ? firstEdge.target : null;
+  // FILTER for edges that actually point to existing nodes to avoid ghost connections (which caused the stuck flow)
+  const validEdges = edges.filter(
+    (e) => e.source === startNode.id && nodes.some((n) => n.id === e.target),
+  );
 
-  if (!nextNodeId) {
-    console.warn("⚠️ Start node is not connected to anything.");
+  if (validEdges.length === 0) {
+    console.warn("⚠️ Start node is not connected to any VALID node.");
     return true; // We matched, but flow ends immediately
   }
+
+  // Use the first valid connection found
+  const nextNodeId = validEdges[0].target;
+  console.log(`✅ Found valid start connection to node: ${nextNodeId}`);
 
   const session = await prisma.workflowSession.create({
     data: {
@@ -260,51 +266,57 @@ async function processNode(session, nodeId, nodes, edges, vendorId) {
       case "button":
         // ANALYZE BUTTON TYPES
         const buttonsData = node.data.buttons || [];
-        // Support SINGLE CTA button (URL or Phone)
-        if (buttonsData.length === 1) {
-          const btn = buttonsData[0];
 
-          if (btn.type === "url" || btn.type === "phone_number") {
-            const isPhone = btn.type === "phone_number";
-            const urlValue = isPhone ? `tel:${btn.value}` : btn.value;
-            const label = btn.text.substring(0, 20);
+        // 1. Prepare Content
+        let bodyText = node.data.label || "Please select:";
+        const validReplyButtons = [];
 
+        for (const [i, b] of buttonsData.entries()) {
+          if (b.type === "url") {
+            bodyText += `\n\n🔗 ${b.text}: ${b.value}`;
+          } else if (b.type === "phone_number") {
+            bodyText += `\n\n📞 ${b.text}: ${b.value}`;
+          } else if (b.type === "flow") {
+            // SPECIFIC HANDLER FOR FLOW BUTTONS
+            // Flows must be sent as a specific interactive type, not inside a standard button list
             try {
               await sendMessage(vendorId, session.conversationId, {
                 type: "interactive",
                 interactive: {
-                  type: "cta_url",
-                  body: { text: node.data.label || "Click below:" },
+                  type: "flow",
+                  header: {
+                    type: "text",
+                    text: node.data.header || "Open Flow",
+                  },
+                  body: {
+                    text: node.data.label || "Click below to start",
+                  },
+                  footer: {
+                    text: node.data.footer || "Secure & Fast",
+                  },
                   action: {
-                    name: "cta_url",
+                    name: "flow",
                     parameters: {
-                      display_text: label,
-                      url: urlValue,
+                      flow_message_version: "3",
+                      flow_token: "unused_token",
+                      flow_id: b.flowId,
+                      flow_cta: b.text,
+                      flow_action: b.flowAction || "navigate",
+                      flow_action_payload: {
+                        screen: b.value || "START",
+                      },
                     },
                   },
                 },
               });
-              await advanceToNextNode(session, node, edges, nodes, vendorId);
-              return; // Done
-            } catch (e) {
-              console.error("Failed to send native CTA, will fallback", e);
+              // We sent the flow, now we wait for the nfm_reply (flow completion)
+              return;
+            } catch (err) {
+              console.error("Failed to send Flow button:", err);
+              bodyText += `\n\n[Flow Button Error: ${b.text}]`;
             }
-          }
-        }
-
-        // STRATEGY 2: FALLBACK / MIXED MODE logic (unchanged essentially, but simplified flow)
-        // ... (rest of the mixed logic remains to handle multiple buttons or errors)
-
-        let bodyText = node.data.label || "Please select:";
-        const validReplyButtons = [];
-
-        buttonsData.forEach((b, i) => {
-          if (b.type === "url") {
-            bodyText += `\n\n🔗 ${b.text}: ${b.value}`;
-          } else if (b.type === "phone_number") {
-            // If we are here, it means we couldn't send it as a single CTA button (maybe mixed with others?)
-            bodyText += `\n\n📞 ${b.text}: ${b.value}`;
           } else {
+            // Standard Reply Button
             validReplyButtons.push({
               type: "reply",
               reply: {
@@ -313,25 +325,46 @@ async function processNode(session, nodeId, nodes, edges, vendorId) {
               },
             });
           }
-        });
+        }
 
-        // 3. Send Mixed/Fallback
-        if (validReplyButtons.length > 0) {
+        // 2. Validate Limits
+        // WhatsApp allows max 3 reply buttons
+        const textOnlyResponse = validReplyButtons.length === 0;
+        const buttonsToSend = validReplyButtons.slice(0, 3);
+
+        if (validReplyButtons.length > 3) {
+          console.warn(
+            `⚠️ Too many buttons (${validReplyButtons.length}). Truncating to 3.`,
+          );
+        }
+
+        // 3. Send
+        if (!textOnlyResponse) {
           await sendMessage(vendorId, session.conversationId, {
             type: "interactive",
             interactive: {
               type: "button",
               body: { text: bodyText },
-              action: { buttons: validReplyButtons },
+              action: { buttons: buttonsToSend },
             },
           });
         } else {
+          // If no reply buttons (e.g. only URL buttons), just send text
           await sendMessage(vendorId, session.conversationId, {
             type: "text",
             text: bodyText,
           });
-          await advanceToNextNode(session, node, edges, nodes, vendorId);
         }
+
+        // Auto-advance is NOT appropriate if we sent reply buttons (we wait for user).
+        // BUT if we only sent text (e.g. URL buttons), we should theoretically auto-advance or wait?
+        // Usually "Button" nodes are meant to wait.
+        // If we converted all buttons to Text (Links), the user has no "Reply" button to click.
+        // So the flow might stall here if we don't advance.
+        // However, standard behavior for Button node is "Input/Wait".
+        // Let's stick to waiting. User can type something to match keywords if setup, or just stuck.
+        // Actually, if it was purely informational (Link), maybe we should advance?
+        // For now, let's keep the logic consistent: Button Node = Wait.
         break;
 
       case "list":
@@ -375,10 +408,15 @@ async function processNode(session, nodeId, nodes, edges, vendorId) {
 // Helper: Auto-advance (recursive)
 async function advanceToNextNode(session, currentNode, edges, nodes, vendorId) {
   // Find generic edge (no sourceHandle specific)
-  const edge = edges.find((e) => e.source === currentNode.id);
-  if (edge) {
-    await updateSessionNode(session.id, edge.target);
-    await processNode(session, edge.target, nodes, edges, vendorId);
+  // FILTER for edges that actually point to existing nodes to avoid ghost connections
+  const validEdges = edges.filter(
+    (e) => e.source === currentNode.id && nodes.some((n) => n.id === e.target),
+  );
+
+  if (validEdges.length > 0) {
+    const targetId = validEdges[0].target;
+    await updateSessionNode(session.id, targetId);
+    await processNode(session, targetId, nodes, edges, vendorId);
   } else {
     // Flow complete
     await terminateSession(session.id, "completed");
