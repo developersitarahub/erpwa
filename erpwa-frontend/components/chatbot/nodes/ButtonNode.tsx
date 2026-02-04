@@ -98,38 +98,42 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
   return (
     <>
       <div
-        className={`relative shadow-xl rounded-xl bg-white border-2 transition-all duration-200 min-w-[280px] ${
-          selected
-            ? "border-orange-500 ring-4 ring-orange-500/10"
-            : "border-gray-100"
-        }`}
+        className={`relative shadow-xl rounded-xl bg-white dark:bg-slate-800 transition-all duration-200 min-w-[280px]`}
       >
+        <div
+          className={`absolute inset-0 rounded-xl border-2 transition-all duration-300 pointer-events-none z-10 ${
+            selected
+              ? "border-orange-500 shadow-[0_0_20px_rgba(249,115,22,0.5)] bg-orange-500/5"
+              : "border-orange-500/30 shadow-[0_0_5px_rgba(249,115,22,0.1)] hover:border-orange-500/60 hover:shadow-[0_0_10px_rgba(249,115,22,0.2)]"
+          }`}
+        />
         {/* Node Header */}
-        <div className="bg-gray-50/80 px-3 py-2 border-b border-gray-100 flex items-center justify-between rounded-t-xl">
+        {/* Node Header */}
+        <div className="bg-gray-50/80 dark:bg-slate-900/80 px-3 py-2 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-lg bg-orange-500 flex items-center justify-center text-white">
               <Disc size={12} />
             </div>
-            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+            <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Interactive
             </span>
           </div>
           <div className="flex items-center gap-1 text-gray-400">
             <button
               onClick={handleDeleteClick}
-              className="p-1 px-2 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+              className="p-1 px-2 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
             >
               <Trash2 size={14} />
             </button>
           </div>
         </div>
 
-        <div className="p-3 bg-white space-y-3">
+        <div className="p-3 bg-white dark:bg-slate-800 space-y-3">
           {isEditing ? (
             <div className="space-y-3 nodrag">
               <input
                 type="text"
-                className="w-full text-xs font-bold border-none bg-gray-50 p-2 rounded-md focus:ring-1 focus:ring-orange-500 outline-none"
+                className="w-full text-xs font-bold border-none bg-gray-50 dark:bg-slate-900 dark:text-gray-200 p-2 rounded-md focus:ring-1 focus:ring-orange-500 outline-none"
                 value={localData.label}
                 onChange={(e) =>
                   setLocalData({ ...localData, label: e.target.value })
@@ -144,7 +148,7 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
                 {localData.buttons.map((btn: any, idx: number) => (
                   <div
                     key={idx}
-                    className="space-y-2 bg-gray-50 p-2 rounded-md border border-gray-100"
+                    className="space-y-2 bg-gray-50 dark:bg-slate-900 p-2 rounded-md border border-gray-100 dark:border-slate-700"
                   >
                     <div className="flex items-center gap-2">
                       <GripVertical size={12} className="text-gray-300" />
@@ -153,7 +157,7 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
                         onChange={(e) =>
                           updateButtonType(idx, e.target.value as any)
                         }
-                        className="text-[10px] bg-white border border-gray-200 rounded px-1 py-1 focus:ring-1 focus:ring-orange-500 outline-none"
+                        className="text-[10px] bg-white dark:bg-slate-800 dark:text-gray-200 border border-gray-200 dark:border-slate-600 rounded px-1 py-1 focus:ring-1 focus:ring-orange-500 outline-none"
                       >
                         <option value="reply">Reply</option>
                         <option value="url">Link</option>
@@ -161,7 +165,7 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
                       </select>
                       <button
                         onClick={() => removeButton(idx)}
-                        className="ml-auto p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                        className="ml-auto p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                       >
                         <Trash2 size={12} />
                       </button>
@@ -170,33 +174,33 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
                     <input
                       value={btn.text}
                       onChange={(e) => updateButtonText(idx, e.target.value)}
-                      className="w-full bg-white border border-gray-200 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-orange-500 outline-none"
+                      className="w-full bg-white dark:bg-slate-800 dark:text-gray-200 border border-gray-200 dark:border-slate-600 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-orange-500 outline-none"
                       placeholder="Button text"
                     />
 
                     {btn.type === "url" && (
-                      <div className="flex items-center gap-1 bg-white border border-gray-200 rounded px-2 py-1">
+                      <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded px-2 py-1">
                         <Link size={10} className="text-gray-400" />
                         <input
                           value={btn.value || ""}
                           onChange={(e) =>
                             updateButtonValue(idx, e.target.value)
                           }
-                          className="flex-1 bg-transparent border-none text-[10px] p-0 focus:ring-0 outline-none"
+                          className="flex-1 bg-transparent border-none text-[10px] dark:text-gray-200 p-0 focus:ring-0 outline-none"
                           placeholder="https://example.com"
                         />
                       </div>
                     )}
 
                     {btn.type === "phone_number" && (
-                      <div className="flex items-center gap-1 bg-white border border-gray-200 rounded px-2 py-1">
+                      <div className="flex items-center gap-1 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded px-2 py-1">
                         <Phone size={10} className="text-gray-400" />
                         <input
                           value={btn.value || ""}
                           onChange={(e) =>
                             updateButtonValue(idx, e.target.value)
                           }
-                          className="flex-1 bg-transparent border-none text-[10px] p-0 focus:ring-0 outline-none"
+                          className="flex-1 bg-transparent border-none text-[10px] dark:text-gray-200 p-0 focus:ring-0 outline-none"
                           placeholder="+1234567890"
                         />
                       </div>
@@ -206,7 +210,7 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
                 {localData.buttons.length < 3 && (
                   <button
                     onClick={addButton}
-                    className="w-full py-1.5 border border-dashed border-gray-300 text-gray-400 text-[10px] font-bold rounded-md flex items-center justify-center gap-1 hover:border-orange-500 hover:text-orange-500 hover:bg-orange-50 transition-all"
+                    className="w-full py-1.5 border border-dashed border-gray-300 dark:border-slate-600 text-gray-400 dark:text-slate-500 text-[10px] font-bold rounded-md flex items-center justify-center gap-1 hover:border-orange-500 hover:text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-900/20 transition-all"
                   >
                     <Plus size={12} /> ADD BUTTON
                   </button>
@@ -225,7 +229,7 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
               className="cursor-text group"
               onDoubleClick={() => setIsEditing(true)}
             >
-              <div className="text-[11px] font-bold text-gray-800 mb-2 truncate group-hover:text-orange-600 transition-colors">
+              <div className="text-[11px] font-bold text-gray-800 dark:text-gray-200 mb-2 truncate group-hover:text-orange-600 transition-colors">
                 {data.label || "Click to add text..."}
               </div>
 
@@ -248,8 +252,8 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
                       rel={isUrl ? "noopener noreferrer" : undefined}
                       className={`border text-xs py-1.5 px-3 rounded-md text-center shadow-sm text-gray-600 font-medium relative group/item transition-colors flex items-center justify-center gap-2 nodrag ${
                         isUrl || isPhone
-                          ? "bg-blue-50 border-blue-100 hover:bg-blue-100 cursor-pointer"
-                          : "bg-white border-gray-200 hover:border-orange-200"
+                          ? "bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/40 cursor-pointer"
+                          : "bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 hover:border-orange-200 text-gray-600 dark:text-gray-300"
                       }`}
                       onClick={(e) => {
                         if (isUrl || isPhone) {
@@ -273,10 +277,10 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
                           id={`handle-${idx}`}
                           style={{
                             top: "50%",
-                            right: "-8px",
+                            right: "-5px",
                             transform: "translateY(-50%)",
                           }}
-                          className="w-2.5 h-2.5 bg-orange-500 border-2 border-white shadow-sm transition-transform group-hover/item:scale-125"
+                          className="w-2.5 h-2.5 bg-orange-500 border-2 border-white dark:border-slate-800 shadow-sm transition-transform group-hover/item:scale-125 z-20"
                         />
                       )}
                     </LinkComponent>
@@ -295,13 +299,13 @@ const ButtonNode = ({ id, data, selected }: NodeProps) => {
         <Handle
           type="target"
           position={Position.Top}
-          className="w-3 h-3 bg-gray-400 border-2 border-white shadow-sm"
+          className="w-3 h-3 bg-gray-400 border-2 border-white dark:border-slate-900 shadow-sm z-20"
         />
 
         <Handle
           type="source"
           position={Position.Bottom}
-          className="w-3 h-3 bg-gray-400 border-2 border-white shadow-sm"
+          className="w-3 h-3 bg-orange-500 border-2 border-white dark:border-slate-900 shadow-sm z-20"
         />
       </div>
 

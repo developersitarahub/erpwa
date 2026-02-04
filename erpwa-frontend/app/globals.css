@@ -1,99 +1,100 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* Light Mode - "Google / Gmail" Theme - Clean, Soft & Familiar */
 :root {
-  --background: #F6F8FC;
+  --background: #f6f8fc;
   /* Gmail's soft blue-gray background */
-  --foreground: #1F1F1F;
+  --foreground: #1f1f1f;
   /* Almost black text - Google Standard */
 
-  --card: #FFFFFF;
+  --card: #ffffff;
   /* Pure White Surface */
-  --card-foreground: #1F1F1F;
+  --card-foreground: #1f1f1f;
 
-  --popover: #FFFFFF;
-  --popover-foreground: #1F1F1F;
+  --popover: #ffffff;
+  --popover-foreground: #1f1f1f;
 
   /* Primary - Google Blue */
-  --primary: #0B57D0;
+  --primary: #0b57d0;
   /* Verified Google Primary Blue */
-  --primary-foreground: #FFFFFF;
+  --primary-foreground: #ffffff;
 
   /* Secondary - Surface Variant */
-  --secondary: #E8F0FE;
+  --secondary: #e8f0fe;
   /* Very light blue background used in Gmail selection */
-  --secondary-foreground: #0B57D0;
+  --secondary-foreground: #0b57d0;
   /* Blue text on secondary */
 
   /* Muted */
-  --muted: #F0F2F5;
+  --muted: #f0f2f5;
   --muted-foreground: #444746;
   /* Google Gray 700 */
 
   /* Accent - Selection */
-  --accent: #D3E3FD;
+  --accent: #d3e3fd;
   /* Google Blue 100 */
-  --accent-foreground: #041E49;
+  --accent-foreground: #041e49;
   /* Google Blue 900 */
 
-  --destructive: #B3261E;
+  --destructive: #b3261e;
   /* Material Design Error Red */
-  --destructive-foreground: #FFFFFF;
+  --destructive-foreground: #ffffff;
 
-  --border: #E5E7EB;
+  --border: #e5e7eb;
   /* Gray 200 - Faint but defined */
-  --input: #FFFFFF;
+  --input: #ffffff;
   /* Pure White inputs */
-  --ring: #0B57D0;
+  --ring: #0b57d0;
 
   /* Google Brand Colors for Charts */
-  --chart-1: #4285F4;
+  --chart-1: #4285f4;
   /* Google Blue */
-  --chart-2: #EA4335;
+  --chart-2: #ea4335;
   /* Google Red */
-  --chart-3: #FBBC04;
+  --chart-3: #fbbc04;
   /* Google Yellow */
-  --chart-4: #34A853;
+  --chart-4: #34a853;
   /* Google Green */
-  --chart-5: #A8C7FA;
+  --chart-5: #a8c7fa;
   /* Light Blue */
 
   --radius: 0.75rem;
   /* Slightly more rounded like Material 3 */
 
   /* Sidebar - Light Surface */
-  --sidebar: #F6F8FC;
+  --sidebar: #f6f8fc;
   /* Matches background */
   --sidebar-foreground: #444746;
   /* Gray text */
-  --sidebar-primary: #C2E7FF;
+  --sidebar-primary: #c2e7ff;
   /* Active item background - Light Blue */
-  --sidebar-primary-foreground: #001D35;
+  --sidebar-primary-foreground: #001d35;
   /* Active item text - Deep Blue */
-  --sidebar-accent: #E1E3E1;
+  --sidebar-accent: #e1e3e1;
   /* Hover state */
-  --sidebar-accent-foreground: #1F1F1F;
+  --sidebar-accent-foreground: #1f1f1f;
   --sidebar-border: #727d8c;
   /* Slate 500 - Clearly visible separator */
-  --sidebar-ring: #0B57D0;
+  --sidebar-ring: #0b57d0;
 
   /* WhatsApp Colors */
-  --wa-chat-bg: #EFEAE2;
-  --wa-inbound: #FFFFFF;
-  --wa-outbound: #D9FDD3;
+  --wa-chat-bg: #efeae2;
+  --wa-inbound: #ffffff;
+  --wa-outbound: #d9fdd3;
   --wa-date: #667781;
 
   /* Page Accents - Clean Google Palette */
-  --page-leads: #34A853;
+  --page-leads: #34a853;
   /* Green */
-  --page-categories: #FBBC04;
+  --page-categories: #fbbc04;
   /* Yellow */
-  --page-gallery: #EA4335;
+  --page-gallery: #ea4335;
   /* Red */
-  --page-templates: #4285F4;
+  --page-templates: #4285f4;
   /* Blue */
-  --page-settings: #5F6368;
+  --page-settings: #5f6368;
   /* Gray */
 }
 
@@ -198,7 +199,11 @@
 }
 
 body {
-  font-family: "Geist", system-ui, -apple-system, sans-serif;
+  font-family:
+    "Geist",
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 /* Page-specific color accents - Apply to page containers for unique themes */
@@ -224,7 +229,11 @@ body {
 
 /* Accent-colored headers */
 .page-header-accent {
-  background: linear-gradient(135deg, var(--page-accent, var(--primary)) 0%, color-mix(in srgb, var(--page-accent, var(--primary)) 70%, white) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--page-accent, var(--primary)) 0%,
+    color-mix(in srgb, var(--page-accent, var(--primary)) 70%, white) 100%
+  );
   color: white;
   padding: 1rem;
   border-radius: var(--radius);
@@ -247,7 +256,9 @@ input:-webkit-autofill:active {
   background-color: var(--card) !important;
   color: var(--foreground) !important;
   border: 1px solid var(--border) !important;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
 }
 
 .toast-base .Toastify__toast-body {
@@ -333,6 +344,25 @@ input:-webkit-autofill:active {
   border-radius: 2px;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+/* React Flow Controls Dark Mode Override */
+.dark .react-flow__controls {
+  background-color: var(--card); /* #1a1a2e */
+  border-color: var(--border);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+}
+
+.dark .react-flow__controls-button {
+  background-color: var(--card);
+  border-bottom: 1px solid var(--border);
+  fill: var(--foreground); /* Icon color */
+  color: var(--foreground);
+}
+
+.dark .react-flow__controls-button:hover {
+  background-color: var(--muted); /* #252545 */
+  fill: var(--primary);
+}
+
+.dark .react-flow__controls-button svg {
+  fill: currentColor;
 }

@@ -12,10 +12,22 @@ import ReactFlow, {
   Node,
   Panel,
   ReactFlowInstance,
+  Edge,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { Save, FolderOpen } from "lucide-react";
+import { useTheme } from "@/context/theme-provider";
 import api from "@/lib/api";
+
+interface SavedWorkflow {
+  id: string;
+  name: string;
+  nodes: Node[];
+  edges: Edge[];
+  triggerKeyword?: string;
+  description?: string;
+  createdAt?: string;
+}
 
 // Components
 import Sidebar from "../../../components/chatbot/Sidebar";
@@ -55,6 +67,7 @@ const initialNodes: Node[] = [
 ];
 
 function FlowBuilderContent() {
+  const { theme } = useTheme();
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -64,6 +77,8 @@ function FlowBuilderContent() {
   const [currentWorkflowId, setCurrentWorkflowId] = useState<string | null>(
     null,
   );
+
+  const isDark = theme === "dark";
 
   // Connect using custom ButtonEdge
   const onConnect = useCallback(
@@ -136,13 +151,13 @@ function FlowBuilderContent() {
     }
   };
 
-  const handleSelectWorkflow = (workflow: any) => {
+  const handleSelectWorkflow = (workflow: SavedWorkflow) => {
     setCurrentWorkflowId(workflow.id); // Track loaded ID
     if (workflow.nodes) setNodes(workflow.nodes);
     if (workflow.edges) {
       // Ensure edges use our custom component
       setEdges(
-        workflow.edges.map((e: any) => ({
+        workflow.edges.map((e: Edge) => ({
           ...e,
           type: "button",
           animated: true,
@@ -159,7 +174,10 @@ function FlowBuilderContent() {
       <Sidebar />
 
       {/* Main Canvas */}
-      <div className="flex-1 h-full bg-gray-50 relative" ref={reactFlowWrapper}>
+      <div
+        className="flex-1 h-full bg-gray-50 dark:bg-slate-900 relative"
+        ref={reactFlowWrapper}
+      >
         <ReactFlow
           nodes={nodes}
           edges={edges}
@@ -175,16 +193,24 @@ function FlowBuilderContent() {
           defaultEdgeOptions={{
             type: "button",
             animated: true,
-            style: { strokeWidth: 2, stroke: "#94a3b8" },
+            style: {
+              strokeWidth: 2,
+              stroke: isDark ? "#475569" : "#94a3b8",
+            },
           }}
+          className={isDark ? "dark" : ""}
         >
-          <Background color="#aaa" gap={16} />
-          <Controls />
+          <Background
+            color={isDark ? "#334155" : "#aaa"}
+            gap={16}
+            className="dark:bg-slate-900"
+          />
+          <Controls className="dark:bg-slate-800 dark:border-slate-700 dark:text-gray-200 fill-current" />
 
           <Panel position="top-right" className="flex gap-2">
             <button
               onClick={() => setIsListModalOpen(true)}
-              className="bg-white text-gray-700 px-3 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition font-medium border border-gray-200 flex items-center gap-2 text-sm"
+              className="bg-white dark:bg-slate-800 text-gray-700 dark:text-gray-200 px-3 py-2 rounded-lg shadow-sm hover:bg-gray-50 dark:hover:bg-slate-700 transition font-medium border border-gray-200 dark:border-slate-700 flex items-center gap-2 text-sm"
             >
               <FolderOpen size={16} /> Load
             </button>
