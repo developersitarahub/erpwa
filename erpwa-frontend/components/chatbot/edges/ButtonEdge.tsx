@@ -7,8 +7,21 @@ import {
   useReactFlow,
 } from "reactflow";
 
+// Define vibrant distinct colors for each node type
+const nodeColors: Record<string, string> = {
+  start: "#a855f7", // purple-500
+  message: "#06b6d4", // cyan-500
+  button: "#f97316", // orange-500
+  list: "#3b82f6", // blue-500
+  image: "#ec4899", // pink-500
+  gallery: "#10b981", // emerald-500
+  default: "#94a3b8", // slate-400
+};
+
 export default function ButtonEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -18,7 +31,7 @@ export default function ButtonEdge({
   style = {},
   markerEnd,
 }: EdgeProps) {
-  const { setEdges } = useReactFlow();
+  const { setEdges, getNode } = useReactFlow();
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX,
     sourceY,
@@ -32,12 +45,47 @@ export default function ButtonEdge({
     setEdges((edges) => edges.filter((edge) => edge.id !== id));
   };
 
+  const sourceNode = getNode(source);
+  const targetNode = getNode(target);
+
+  const sourceColor = sourceNode
+    ? nodeColors[sourceNode.type as string] || nodeColors.default
+    : nodeColors.default;
+  const targetColor = targetNode
+    ? nodeColors[targetNode.type as string] || nodeColors.default
+    : nodeColors.default;
+
+  // Use a sanitized code-safe ID for the gradient
+  const gradientId = `gradient-${id.replace(/[^a-zA-Z0-9-]/g, "_")}`;
+
   return (
     <>
+      {/* Define the gradient. React Flow edges are inside an SVG, so we can use defs directly. 
+          However, putting it in portal or standard flow is safer. 
+          Since we are inside the <g> of the edge, just rendering defs works. */}
+      <defs>
+        <linearGradient
+          id={gradientId}
+          gradientUnits="userSpaceOnUse"
+          x1={sourceX}
+          y1={sourceY}
+          x2={targetX}
+          y2={targetY}
+        >
+          <stop offset="0%" stopColor={sourceColor} />
+          <stop offset="100%" stopColor={targetColor} />
+        </linearGradient>
+      </defs>
+
       <BaseEdge
         path={edgePath}
         markerEnd={markerEnd}
-        style={{ strokeWidth: 2, stroke: "#94a3b8", ...style }}
+        style={{
+          ...style,
+          strokeWidth: 3,
+          stroke: `url(#${gradientId})`,
+          strokeLinecap: "round",
+        }}
       />
       <EdgeLabelRenderer>
         <div

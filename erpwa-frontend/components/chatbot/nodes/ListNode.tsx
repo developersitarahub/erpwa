@@ -71,12 +71,16 @@ const ListNode = ({ id, data, selected }: NodeProps) => {
   return (
     <>
       <div
-        className={`relative shadow-xl rounded-xl bg-white dark:bg-slate-800 border-2 transition-all duration-200 min-w-[240px] ${
-          selected
-            ? "border-blue-500 ring-4 ring-blue-500/10"
-            : "border-gray-100 dark:border-slate-700"
-        }`}
+        className={`relative shadow-xl rounded-xl bg-white dark:bg-slate-800 transition-all duration-200 min-w-[240px]`}
       >
+        <div
+          className={`absolute inset-0 rounded-xl border-2 transition-all duration-300 pointer-events-none z-10 ${
+            selected
+              ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.5)] bg-blue-500/5"
+              : "border-blue-500/30 shadow-[0_0_5px_rgba(59,130,246,0.1)] hover:border-blue-500/60 hover:shadow-[0_0_10px_rgba(59,130,246,0.2)]"
+          }`}
+        />
+        {/* Node Header */}
         {/* Node Header */}
         <div className="bg-gray-50/80 dark:bg-slate-900/80 px-3 py-2 border-b border-gray-100 dark:border-slate-700 flex items-center justify-between rounded-t-xl">
           <div className="flex items-center gap-2">
@@ -183,10 +187,10 @@ const ListNode = ({ id, data, selected }: NodeProps) => {
                       id={`handle-${idx}`}
                       style={{
                         top: "50%",
-                        right: "-8px",
+                        right: "-5px",
                         transform: "translateY(-50%)",
                       }}
-                      className="w-2.5 h-2.5 bg-blue-500 border-2 border-white shadow-sm transition-transform group-hover/item:scale-125"
+                      className="w-2.5 h-2.5 bg-blue-500 border-2 border-white dark:border-slate-800 shadow-sm transition-transform group-hover/item:scale-125 z-20"
                     />
                   </div>
                 ))}
@@ -203,12 +207,12 @@ const ListNode = ({ id, data, selected }: NodeProps) => {
         <Handle
           type="target"
           position={Position.Top}
-          className="w-3 h-3 bg-gray-400 border-2 border-white shadow-sm"
+          className="w-3 h-3 bg-gray-400 border-2 border-white dark:border-slate-900 shadow-sm z-20"
         />
         <Handle
           type="source"
           position={Position.Bottom}
-          className="w-3 h-3 bg-gray-400 border-2 border-white shadow-sm"
+          className="w-3 h-3 bg-blue-500 border-2 border-white dark:border-slate-900 shadow-sm z-20"
         />
       </div>
 
