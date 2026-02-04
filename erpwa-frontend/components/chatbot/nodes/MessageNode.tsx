@@ -2,12 +2,19 @@ import React, { memo, useState } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "react-toastify";
 import { Handle, Position, NodeProps, useReactFlow } from "reactflow";
-import { Trash2, Check, MessageSquare, AlertTriangle, X } from "lucide-react";
+import {
+  Trash2,
+  Check,
+  MessageSquare,
+  AlertTriangle,
+  X,
+  Copy,
+} from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/card";
 import { Button } from "@/components/button";
 
 const MessageNode = ({ id, data, selected }: NodeProps) => {
-  const { setNodes } = useReactFlow();
+  const { setNodes, getNodes } = useReactFlow();
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [localData, setLocalData] = useState({
@@ -23,6 +30,29 @@ const MessageNode = ({ id, data, selected }: NodeProps) => {
     setNodes((nds) => nds.filter((node) => node.id !== id));
     setShowDeleteModal(false);
     toast.success("Message node deleted");
+  };
+
+  const handleCopy = () => {
+    const currentNode = getNodes().find((node) => node.id === id);
+
+    if (!currentNode) return;
+
+    const newNode = {
+      ...currentNode,
+      id: `node_${Math.random().toString(36).substr(2, 9)}`,
+      position: {
+        x: currentNode.position.x + 50,
+        y: currentNode.position.y + 50,
+      },
+      data: {
+        ...currentNode.data,
+        ...localData,
+      },
+      selected: false,
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    toast.success("Message node copied");
   };
 
   const handleSave = () => {
@@ -58,6 +88,13 @@ const MessageNode = ({ id, data, selected }: NodeProps) => {
               </span>
             </div>
             <div className="flex items-center gap-1">
+              <button
+                onClick={handleCopy}
+                className="p-1 px-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
+                title="Copy Node"
+              >
+                <Copy size={14} />
+              </button>
               <button
                 onClick={handleDeleteClick}
                 className="p-1 px-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"

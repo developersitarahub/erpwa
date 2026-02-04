@@ -9,13 +9,14 @@ import {
   Image as ImageIcon,
   AlertTriangle,
   X,
+  Copy,
 } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/card";
 import { Button } from "@/components/button";
 import GalleryModal from "../GalleryModal";
 
 const GalleryNode = ({ id, data, selected }: NodeProps) => {
-  const { setNodes } = useReactFlow();
+  const { setNodes, getNodes } = useReactFlow();
   const [isEditing, setIsEditing] = useState(false);
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -33,6 +34,29 @@ const GalleryNode = ({ id, data, selected }: NodeProps) => {
     setNodes((nds) => nds.filter((node) => node.id !== id));
     setShowDeleteModal(false);
     toast.success("Gallery node deleted");
+  };
+
+  const handleCopy = () => {
+    const currentNode = getNodes().find((node) => node.id === id);
+
+    if (!currentNode) return;
+
+    const newNode = {
+      ...currentNode,
+      id: `node_${Math.random().toString(36).substr(2, 9)}`,
+      position: {
+        x: currentNode.position.x + 50,
+        y: currentNode.position.y + 50,
+      },
+      data: {
+        ...currentNode.data,
+        ...localData,
+      },
+      selected: false,
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+    toast.success("Gallery node copied");
   };
 
   const handleSave = () => {
@@ -75,8 +99,16 @@ const GalleryNode = ({ id, data, selected }: NodeProps) => {
             </div>
             <div className="flex items-center gap-1 text-gray-400">
               <button
+                onClick={handleCopy}
+                className="p-1 px-2 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors"
+                title="Copy Node"
+              >
+                <Copy size={14} />
+              </button>
+              <button
                 onClick={handleDeleteClick}
                 className="p-1 px-2 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                title="Delete Node"
               >
                 <Trash2 size={14} />
               </button>
