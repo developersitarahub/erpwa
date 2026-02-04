@@ -681,6 +681,11 @@ export default function TemplatesPage() {
   };
 
   const handleCardClick = (template: Template) => {
+    if (template.isMetaOnly) {
+      handleMetaSend(template, { stopPropagation: () => { } } as any);
+      return;
+    }
+
     if (template.status === "approved") {
       openSendModal(template);
     } else if (template.status === "draft" || template.status === "rejected") {
@@ -1129,6 +1134,11 @@ export default function TemplatesPage() {
                                   : "text-muted-foreground bg-muted/30 hover:bg-muted/50"
                             )}
                             onClick={(e) => {
+                              if (t.isMetaOnly) {
+                                handleMetaSend(t, e);
+                                return;
+                              }
+
                               if (t.status === "approved") {
                                 e.stopPropagation();
                                 openSendModal(t);

@@ -38,13 +38,10 @@ router.post(
     const accessToken = decrypt(vendor.whatsappAccessToken);
 
     /** 2️⃣ Template */
-    const template = await prisma.template.findFirst({
-      where: { id: templateId, status: "approved" },
+    const templateRaw = await prisma.template.findUnique({
+      where: { id: templateId },
       include: {
-        languages: {
-          where: { metaStatus: "approved" },
-          take: 1,
-        },
+        languages: true,
         buttons: true,
         carouselCards: {
           orderBy: { position: 'asc' }
@@ -52,11 +49,27 @@ router.post(
       },
     });
 
-    if (!template || !template.languages.length) {
-      return res.status(404).json({ message: "Approved template not found" });
+    if (!templateRaw) {
+      return res.status(404).json({ message: "Template not found" });
     }
 
-    const language = template.languages[0];
+    if (templateRaw.status !== "approved") {
+      return res.status(400).json({ message: `Template is not approved (Status: ${templateRaw.status})` });
+    }
+
+    const approvedLanguage = templateRaw.languages.find(l => l.metaStatus === "approved");
+
+    if (!approvedLanguage) {
+      return res.status(400).json({ message: "No approved language version found for this template" });
+    }
+
+    // Use the raw template but with the filtered language for compatibility with existing code
+    const template = {
+      ...templateRaw,
+      languages: [approvedLanguage]
+    };
+
+    const language = approvedLanguage;
 
     /** 3️⃣ Load header media (if any) */
     let media = null;
