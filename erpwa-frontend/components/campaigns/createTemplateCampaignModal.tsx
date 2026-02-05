@@ -11,13 +11,14 @@ import {
   Search,
   Image as ImageIcon,
   ArrowLeft,
-  MessageSquareIcon,
   ChevronRight,
+  MessageSquare,
   Loader2,
-  Globe,
   Phone,
   ShoppingBag,
   Layers,
+  Reply,
+  SquareArrowOutUpRight,
 } from "lucide-react";
 import type { Category, Contact } from "@/lib/types";
 
@@ -196,7 +197,9 @@ export default function CreateTemplateCampaignModal({
       .map(({ idx }) => `{{${idx + 1}}}`);
 
     if (missingVariables.length > 0) {
-      return alert(`Please fill in all template variables: ${missingVariables.join(", ")}`);
+      return alert(
+        `Please fill in all template variables: ${missingVariables.join(", ")}`,
+      );
     }
 
     setIsLaunching(true);
@@ -302,7 +305,7 @@ export default function CreateTemplateCampaignModal({
                       </div>
                     ) : templates.length === 0 ? (
                       <div className="text-center py-20 bg-muted/20 rounded-2xl border-2 border-dashed border-border">
-                        <MessageSquareIcon className="w-12 h-12 mx-auto mb-3 text-muted-foreground opacity-20" />
+                        <MessageSquare className="w-12 h-12 mx-auto mb-12 text-muted-foreground opacity-20" />
                         <p className="text-sm text-muted-foreground font-medium">
                           No approved templates found
                         </p>
@@ -333,34 +336,35 @@ export default function CreateTemplateCampaignModal({
                               </p>
                               <div className="flex gap-1 items-center">
                                 <span
-                                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${t.category === "MARKETING"
-                                    ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30"
-                                    : t.category === "UTILITY"
-                                      ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30"
-                                      : "bg-muted text-muted-foreground"
-                                    }`}
+                                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                                    t.category === "MARKETING"
+                                      ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30"
+                                      : t.category === "UTILITY"
+                                        ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30"
+                                        : "bg-muted text-muted-foreground"
+                                  }`}
                                 >
                                   {t.category}
                                 </span>
                                 {(t.templateType || "").toLowerCase() ===
                                   "catalog" && (
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-purple-100 text-purple-600 dark:bg-purple-900/30 flex items-center gap-1">
-                                      <ShoppingBag className="w-3 h-3" /> Catalog
-                                    </span>
-                                  )}
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-purple-100 text-purple-600 dark:bg-purple-900/30 flex items-center gap-1">
+                                    <ShoppingBag className="w-3 h-3" /> Catalog
+                                  </span>
+                                )}
                                 {(t.templateType || "").toLowerCase() ===
                                   "carousel" && (
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-pink-100 text-pink-600 dark:bg-pink-900/30 flex items-center gap-1">
-                                      <Layers className="w-3 h-3" /> Carousel
-                                    </span>
-                                  )}
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-pink-100 text-pink-600 dark:bg-pink-900/30 flex items-center gap-1">
+                                    <Layers className="w-3 h-3" /> Carousel
+                                  </span>
+                                )}
                                 {(!t.templateType ||
                                   (t.templateType || "").toLowerCase() ===
-                                  "standard") && (
-                                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-600 dark:bg-slate-800 flex items-center gap-1">
-                                      Standard
-                                    </span>
-                                  )}
+                                    "standard") && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-100 text-slate-600 dark:bg-slate-800 flex items-center gap-1">
+                                    Standard
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed italic">
@@ -394,24 +398,24 @@ export default function CreateTemplateCampaignModal({
                         </p>
                         {(selectedTemplate.templateType || "").toLowerCase() ===
                           "catalog" && (
-                            <span className="text-[10px] text-purple-600 font-bold uppercase tracking-widest flex items-center gap-1">
-                              <ShoppingBag className="w-3 h-3" /> Catalog
-                            </span>
-                          )}
+                          <span className="text-[10px] text-purple-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                            <ShoppingBag className="w-3 h-3" /> Catalog
+                          </span>
+                        )}
                         {(selectedTemplate.templateType || "").toLowerCase() ===
                           "carousel" && (
-                            <span className="text-[10px] text-pink-600 font-bold uppercase tracking-widest flex items-center gap-1">
-                              <Layers className="w-3 h-3" /> Carousel
-                            </span>
-                          )}
+                          <span className="text-[10px] text-pink-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                            <Layers className="w-3 h-3" /> Carousel
+                          </span>
+                        )}
                         {(!selectedTemplate.templateType ||
                           (
                             selectedTemplate.templateType || ""
                           ).toLowerCase() === "standard") && (
-                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1">
-                              Standard
-                            </span>
-                          )}
+                          <span className="text-[10px] text-slate-500 font-bold uppercase tracking-widest flex items-center gap-1">
+                            Standard
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -462,10 +466,11 @@ export default function CreateTemplateCampaignModal({
                                       newModes[idx] = "custom";
                                       setVariableModes(newModes);
                                     }}
-                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${variableModes[idx] === "custom"
-                                      ? "bg-white dark:bg-card text-foreground shadow-sm"
-                                      : "text-muted-foreground hover:text-foreground"
-                                      }`}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                      variableModes[idx] === "custom"
+                                        ? "bg-white dark:bg-card text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
+                                    }`}
                                   >
                                     Custom
                                   </button>
@@ -479,10 +484,11 @@ export default function CreateTemplateCampaignModal({
                                       newVars[idx] = "";
                                       setTemplateVariables(newVars);
                                     }}
-                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${variableModes[idx] === "company"
-                                      ? "bg-white dark:bg-card text-foreground shadow-sm"
-                                      : "text-muted-foreground hover:text-foreground"
-                                      }`}
+                                    className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${
+                                      variableModes[idx] === "company"
+                                        ? "bg-white dark:bg-card text-foreground shadow-sm"
+                                        : "text-muted-foreground hover:text-foreground"
+                                    }`}
                                   >
                                     Company
                                   </button>
@@ -506,10 +512,11 @@ export default function CreateTemplateCampaignModal({
                                   newVars[idx] = e.target.value;
                                   setTemplateVariables(newVars);
                                 }}
-                                className={`w-full bg-input border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:opacity-30 ${variableModes[idx] === "company"
-                                  ? "opacity-60 cursor-not-allowed"
-                                  : ""
-                                  }`}
+                                className={`w-full bg-input border border-border rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:opacity-30 ${
+                                  variableModes[idx] === "company"
+                                    ? "opacity-60 cursor-not-allowed"
+                                    : ""
+                                }`}
                               />
                             </div>
                           ))
@@ -530,7 +537,7 @@ export default function CreateTemplateCampaignModal({
                             className="text-[10px] font-bold text-primary hover:text-primary/80 transition-colors uppercase tracking-wider"
                           >
                             {contacts.length > 0 &&
-                              contacts.every((c) => selectedRecipients.has(c.id))
+                            contacts.every((c) => selectedRecipients.has(c.id))
                               ? "Deselect All"
                               : "Select All"}
                           </button>
@@ -606,10 +613,11 @@ export default function CreateTemplateCampaignModal({
                                 className="group flex items-center gap-4 p-4 hover:bg-primary/5 cursor-pointer transition-all"
                               >
                                 <div
-                                  className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${selectedRecipients.has(contact.id)
-                                    ? "bg-primary border-primary shadow-lg shadow-primary/30"
-                                    : "border-border group-hover:border-primary/50 bg-background"
-                                    }`}
+                                  className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${
+                                    selectedRecipients.has(contact.id)
+                                      ? "bg-primary border-primary shadow-lg shadow-primary/30"
+                                      : "border-border group-hover:border-primary/50 bg-background"
+                                  }`}
                                 >
                                   {selectedRecipients.has(contact.id) && (
                                     <Check className="w-3 h-3 text-white" />
@@ -795,11 +803,11 @@ export default function CreateTemplateCampaignModal({
                                       className="p-2.5 text-center text-[13px] font-medium text-[#00a884] flex items-center justify-center gap-2 hover:bg-white/5 transition-colors cursor-pointer"
                                     >
                                       {btn.type === "URL" ? (
-                                        <Globe className="w-3.5 h-3.5" />
+                                        <SquareArrowOutUpRight className="w-3.5 h-3.5" />
                                       ) : btn.type === "PHONE_NUMBER" ? (
                                         <Phone className="w-3.5 h-3.5" />
                                       ) : (
-                                        <MessageSquareIcon className="w-3.5 h-3.5" />
+                                        <Reply className="w-3.5 h-3.5" />
                                       )}
                                       {btn.text}
                                     </div>
@@ -846,10 +854,11 @@ export default function CreateTemplateCampaignModal({
               whileTap={{ scale: canLaunch ? 0.98 : 1 }}
               onClick={handleLaunch}
               disabled={!canLaunch}
-              className={`px-10 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${canLaunch
-                ? "bg-primary text-white shadow-xl shadow-primary/30 hover:bg-primary/90"
-                : "bg-muted text-muted-foreground cursor-not-allowed border border-border opacity-50"
-                }`}
+              className={`px-10 py-3 rounded-xl text-sm font-bold flex items-center gap-2 transition-all ${
+                canLaunch
+                  ? "bg-primary text-white shadow-xl shadow-primary/30 hover:bg-primary/90"
+                  : "bg-muted text-muted-foreground cursor-not-allowed border border-border opacity-50"
+              }`}
             >
               <Zap className="w-4 h-4" />
               {isLaunching ? "Launching..." : "Launch Campaign"}

@@ -7,7 +7,7 @@ export interface Category {
   get_contacts_count?: number;
 }
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   data: T;
   message?: string;
   error?: string;
@@ -101,6 +101,51 @@ export interface Conversation {
   templateRequired?: boolean;
 }
 
+export interface OutboundMedia {
+  url?: string;
+  link?: string;
+  caption?: string;
+}
+
+// Helper types for interactive messages
+export interface OutboundInteractive {
+  type: string;
+  action?: {
+    button?: string;
+    buttons?: Array<{
+      type?: string;
+      reply?: {
+        id?: string;
+        title: string;
+      };
+    }>;
+    parameters?: {
+      url?: string;
+      display_text?: string;
+    };
+    sections?: Array<{
+      title?: string;
+      rows?: Array<{
+        id: string;
+        title: string;
+        description?: string;
+      }>;
+    }>;
+  };
+  header?: { type: string; text?: string };
+  body?: { text?: string };
+  footer?: { text?: string };
+}
+
+export interface OutboundPayload {
+  image?: OutboundMedia;
+  video?: OutboundMedia;
+  audio?: OutboundMedia;
+  document?: OutboundMedia;
+  interactive?: OutboundInteractive;
+  [key: string]: unknown;
+}
+
 export interface Message {
   id: string;
   whatsappMessageId?: string;
@@ -165,7 +210,7 @@ export interface Message {
     buttonValue?: string;
     buttonType?: string;
   }[];
-  outboundPayload?: any;
+  outboundPayload?: OutboundPayload;
   messageType?: string;
 }
 
