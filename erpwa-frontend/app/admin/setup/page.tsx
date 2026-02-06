@@ -90,25 +90,46 @@ export default function WhatsAppSetupPage() {
     script.async = true;
     document.body.appendChild(script);
   }, []);
-
   useEffect(() => {
     const handler = (event: MessageEvent) => {
       if (
         event.origin !== "https://www.facebook.com" &&
         event.origin !== "https://web.facebook.com"
-      )
+      ) {
         return;
+      }
 
-      try {
-        const data = JSON.parse(event.data);
+      const payload =
+        typeof event.data === "string"
+          ? (() => {
+              try {
+                return JSON.parse(event.data);
+              } catch {
+                return null;
+              }
+            })()
+          : event.data;
 
-        if (data.type === "WA_EMBEDDED_SIGNUP" && data.event === "FINISH") {
+      if (!payload) return;
+
+      if (payload.type === "WA_EMBEDDED_SIGNUP") {
+        console.log("📩 WA_EMBEDDED_SIGNUP:", payload);
+
+        if (payload.event === "FINISH") {
           setEmbeddedSession({
-            whatsappBusinessId: data.data.waba_id,
-            whatsappPhoneNumberId: data.data.phone_number_id,
+            whatsappBusinessId: payload.data.waba_id,
+            whatsappPhoneNumberId: payload.data.phone_number_id,
           });
         }
-      } catch {}
+
+        if (payload.event === "ERROR") {
+          console.error("❌ Embedded signup error:", payload.data);
+        }
+
+        if (payload.event === "CANCEL") {
+          console.warn("⚠️ Embedded signup cancelled:", payload.data);
+        }
+      }
     };
 
     window.addEventListener("message", handler);
@@ -192,18 +213,27 @@ export default function WhatsAppSetupPage() {
 
     window.FB.login(
       (response: any) => {
-        // 👇 wrap async logic inside
-        (async () => {
-          if (!response.authResponse) {
-            setSaving(false);
-            toast.error("Signup cancelled");
-            return;
+        if (!response.authResponse) {
+          setSaving(false);
+          toast.error("Signup cancelled");
+          return;
+        }
+
+        const code = response.authResponse.code;
+
+        // ⏳ wait for WA_EMBEDDED_SIGNUP
+        const waitForSession = async () => {
+          for (let i = 0; i < 10; i++) {
+            if (embeddedSession) return embeddedSession;
+            await new Promise((r) => setTimeout(r, 300));
           }
+          return null;
+        };
 
-          const code = response.authResponse.code;
-          const session = embeddedSession;
+        (async () => {
+          const session = await waitForSession();
 
-          if (!session?.whatsappBusinessId || !session?.whatsappPhoneNumberId) {
+          if (!session) {
             setSaving(false);
             setError("Failed to receive WhatsApp account details from Meta");
             return;

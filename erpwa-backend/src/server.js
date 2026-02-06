@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "dotenv/config"; // Reload env
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -82,17 +82,19 @@ app.use((err, req, res, next) => {
     if (err.code === "LIMIT_FILE_SIZE") {
       return res.status(400).json({
         message: "File too large",
-        error: "Maximum file size limit is 100MB."
+        error: "Maximum file size limit is 100MB.",
       });
     }
-    return res.status(400).json({ message: "Upload Error", error: err.message });
+    return res
+      .status(400)
+      .json({ message: "Upload Error", error: err.message });
   }
 
   if (err) {
     console.error("❌ Global Error:", err);
     return res.status(500).json({
       message: "Internal Server Error",
-      error: err.message || "Unknown error occurred"
+      error: err.message || "Unknown error occurred",
     });
   }
 
